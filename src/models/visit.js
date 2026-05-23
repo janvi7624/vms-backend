@@ -1,0 +1,23 @@
+module.exports = (sequelize, DataTypes) =>
+  sequelize.define('Visit', {
+    id: { type: DataTypes.UUID, defaultValue: DataTypes.UUIDV4, primaryKey: true },
+    visitor_id: DataTypes.UUID,
+    host_employee_id: DataTypes.UUID,
+    visit_type: { type: DataTypes.STRING(50), allowNull: false },
+    purpose: { type: DataTypes.TEXT, allowNull: false },
+    status: { type: DataTypes.STRING(50), allowNull: false, defaultValue: 'pending' },
+    scheduled_at: DataTypes.DATE,
+    checked_in_at: DataTypes.DATE,
+    checked_out_at: DataTypes.DATE,
+    meeting_room: DataTypes.STRING(255),
+    secure_token: { type: DataTypes.STRING(500), unique: true },
+    notes: DataTypes.TEXT,
+    location_id: DataTypes.UUID,
+    approved_by: DataTypes.UUID,
+    approved_at: DataTypes.DATE,
+    declined_reason: DataTypes.TEXT,
+    organization_id: DataTypes.UUID,
+  }, {
+    tableName: 'visits',
+    timestamps: true,
+  });

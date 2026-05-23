@@ -1,0 +1,35 @@
+# Dependencies
+node_modules/
+
+# Environment / secrets (contains DATABASE_URL, JWT_SECRET, email creds)
+.env
+.env.local
+.env.*.local
+
+# Visitor photo uploads (runtime user data)
+uploads/
+
+# Logs
+logs/
+*.log
+npm-debug.log*
+
+# Build output
+dist/
+build/
+
+# Coverage / test output
+coverage/
+.nyc_output/
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Editor / IDE
+.idea/
+.vscode/
+*.iml
+*.swp
+
+.claude/
