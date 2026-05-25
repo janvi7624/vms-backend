@@ -24,6 +24,7 @@ const { initializeSocket } = require('./services/notificationService');
 const { setIo } = require('./controllers/temiController');
 const { setIo: setQrIo } = require('./controllers/qrController');
 const { setIo: setOtpIo } = require('./controllers/otpController');
+const { setAdminIo } = require('./controllers/adminController');
 
 const app = express();
 const httpServer = createServer(app);
@@ -60,6 +61,7 @@ initializeSocket(io);
 setIo(io);
 setQrIo(io);
 setOtpIo(io);
+setAdminIo(io);
 
 app.use(helmet({ crossOriginEmbedderPolicy: false }));
 app.use(cors({

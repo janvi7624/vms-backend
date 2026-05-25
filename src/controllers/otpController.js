@@ -1,4 +1,4 @@
-const { Visit, Visitor, User } = require('../models');
+const { Visit, Visitor, User, TemiRobot } = require('../models');
 const { createOTPSession, validateOTP } = require('../services/otpService');
 const { sendOTPCode } = require('../services/emailService');
 const { VISIT_STATUS, SOCKET_EVENTS } = require('../config/constants');
@@ -97,6 +97,7 @@ const verifyOTP = async (req, res, next) => {
       include: [
         { model: Visitor, as: 'visitor', attributes: ['name', 'email', 'phone', 'company'] },
         { model: User, as: 'host', attributes: ['name', 'department', 'desk_location'] },
+        { model: TemiRobot, as: 'robot', attributes: ['name', 'serial_number'], required: false },
       ],
     });
 
@@ -141,6 +142,7 @@ const verifyOTP = async (req, res, next) => {
         hostDepartment,
         destination,
         meetingRoom: visit.meeting_room,
+        robotName: visit.robot?.name || null,
       },
     });
   } catch (err) {

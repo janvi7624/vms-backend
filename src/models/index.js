@@ -48,6 +48,7 @@ Visit.belongsTo(User,         { as: 'host', foreignKey: 'host_employee_id' });
 Visit.belongsTo(User,         { as: 'approver', foreignKey: 'approved_by' });
 Visit.belongsTo(Location,     { as: 'location', foreignKey: 'location_id' });
 Visit.belongsTo(Organization, { as: 'organization', foreignKey: 'organization_id' });
+Visit.belongsTo(TemiRobot,    { as: 'robot', foreignKey: 'robot_id' });
 Visit.hasOne(QrCode,          { as: 'qrCode', foreignKey: 'visit_id', onDelete: 'CASCADE' });
 Visit.hasMany(OtpSession,     { as: 'otpSessions', foreignKey: 'visit_id', onDelete: 'CASCADE' });
 Visit.hasMany(Notification,   { as: 'notifications', foreignKey: 'visit_id', onDelete: 'CASCADE' });
@@ -65,6 +66,7 @@ Notification.belongsTo(Visit, { as: 'visit', foreignKey: 'visit_id' });
 // TemiRobot
 TemiRobot.belongsTo(Location,     { as: 'location', foreignKey: 'location_id' });
 TemiRobot.belongsTo(Organization, { as: 'organization', foreignKey: 'organization_id' });
+TemiRobot.hasMany(Visit,          { as: 'visits', foreignKey: 'robot_id', onDelete: 'SET NULL' });
 
 // OtpSession
 OtpSession.belongsTo(Visit,        { as: 'visit', foreignKey: 'visit_id' });

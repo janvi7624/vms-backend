@@ -7,13 +7,13 @@ const setIo = (socketIo) => { io = socketIo; };
 // POST /temi/heartbeat — Temi robot pings to update status
 const heartbeat = async (req, res, next) => {
   try {
-    const { serial, status = 'online', currentTask } = req.body;
+    const { serial, status = 'online', currentTask, batteryLevel } = req.body;
     if (!serial) return res.status(400).json({ error: 'Serial number required' });
 
-    await TemiRobot.update(
-      { status, current_task: currentTask, last_seen: new Date() },
-      { where: { serial_number: serial } }
-    );
+    const updates = { status, current_task: currentTask, last_seen: new Date() };
+    if (batteryLevel != null) updates.battery_level = batteryLevel;
+
+    await TemiRobot.update(updates, { where: { serial_number: serial } });
 
     res.json({ ok: true });
   } catch (err) {

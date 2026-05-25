@@ -7,6 +7,7 @@ module.exports = (sequelize, DataTypes) =>
     status: { type: DataTypes.STRING(50), defaultValue: 'offline' },
     current_task: DataTypes.STRING(255),
     last_seen: DataTypes.DATE,
+    battery_level: { type: DataTypes.INTEGER, allowNull: true },
     saved_locations: { type: DataTypes.JSONB, defaultValue: [] },
     organization_id: DataTypes.UUID,
   }, {

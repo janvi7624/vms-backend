@@ -16,6 +16,8 @@ module.exports = (sequelize, DataTypes) =>
     approved_by: DataTypes.UUID,
     approved_at: DataTypes.DATE,
     declined_reason: DataTypes.TEXT,
+    robot_id: DataTypes.UUID,
+    completed_at: DataTypes.DATE,
     organization_id: DataTypes.UUID,
   }, {
     tableName: 'visits',

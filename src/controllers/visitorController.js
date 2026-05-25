@@ -1,5 +1,5 @@
 const { col } = require('sequelize');
-const { Visit, Visitor, User, AuditLog } = require('../models');
+const { Visit, Visitor, User, AuditLog, TemiRobot } = require('../models');
 const { sendVisitorInvite, sendOTPCode } = require('../services/emailService');
 const { notifyVisitRequest } = require('../services/notificationService');
 const { generateSecureToken } = require('../utils/helpers');
@@ -266,4 +266,53 @@ const getVisitor = async (req, res, next) => {
   }
 };
 
-module.exports = { createPrePlanned, createImpromptu, getVisitorForm, submitVisitorForm, getVisitor };
+// POST /visitor/history — public, lookup visit history by email
+const lookupVisitorHistory = async (req, res, next) => {
+  try {
+    const { email } = req.body;
+    if (!email || !email.includes('@')) {
+      return res.status(400).json({ error: 'Valid email is required' });
+    }
+
+    const visitor = await Visitor.findOne({
+      where: { email: email.toLowerCase().trim() },
+      attributes: ['id', 'name', 'company'],
+      raw: true,
+    });
+
+    if (!visitor) {
+      return res.json({ visitor: null, visits: [] });
+    }
+
+    const visits = await Visit.findAll({
+      where: { visitor_id: visitor.id },
+      include: [
+        { model: User, as: 'host', attributes: ['name', 'department'], required: false },
+        { model: TemiRobot, as: 'robot', attributes: ['name', 'status'], required: false },
+      ],
+      order: [['created_at', 'DESC']],
+      limit: 15,
+      attributes: ['id', 'status', 'purpose', 'visit_type', 'scheduled_at', 'created_at', 'checked_in_at', 'completed_at', 'meeting_room'],
+    });
+
+    res.json({
+      visitor: { name: visitor.name, company: visitor.company },
+      visits: visits.map((v) => ({
+        id: v.id,
+        status: v.status,
+        purpose: v.purpose,
+        visitType: v.visit_type,
+        date: v.scheduled_at || v.created_at,
+        checkedInAt: v.checked_in_at,
+        completedAt: v.completed_at,
+        meetingRoom: v.meeting_room,
+        host: v.host ? { name: v.host.name, department: v.host.department } : null,
+        robot: v.robot ? { name: v.robot.name, status: v.robot.status } : null,
+      })),
+    });
+  } catch (err) {
+    next(err);
+  }
+};
+
+module.exports = { createPrePlanned, createImpromptu, getVisitorForm, submitVisitorForm, getVisitor, lookupVisitorHistory };

@@ -2,6 +2,9 @@ const bcrypt = require('bcryptjs');
 const { Op, col, fn, literal } = require('sequelize');
 const { sequelize, Organization, User, Visit, TemiRobot, Branch, Location } = require('../models');
 
+const PLAN_PRICES = { standard: 49, professional: 149, enterprise: 499 };
+const STAFF_ROLES  = ['admin', 'sub_admin', 'employee'];
+
 // ── Organizations CRUD ────────────────────────────────────────────────────
 
 const listOrganizations = async (req, res, next) => {
@@ -39,12 +42,7 @@ const listOrganizations = async (req, res, next) => {
       nest: false,
     });
 
-    res.json({
-      organizations,
-      total,
-      page: parseInt(page),
-      limit: parseInt(limit),
-    });
+    res.json({ organizations, total, page: parseInt(page), limit: parseInt(limit) });
   } catch (err) {
     next(err);
   }
@@ -52,27 +50,33 @@ const listOrganizations = async (req, res, next) => {
 
 const getOrganization = async (req, res, next) => {
   try {
-    const rows = await Organization.findAll({
-      where: { id: req.params.id },
-      attributes: {
-        include: [
-          [literal('COUNT(DISTINCT "users"."id") FILTER (WHERE "users"."is_active" = TRUE)'), 'active_employees'],
-          [literal('COUNT(DISTINCT "branches"."id")'), 'branch_count'],
-          [literal('COUNT(DISTINCT "robots"."id")'), 'robot_count'],
-        ],
-      },
-      include: [
-        { model: User, as: 'users', attributes: [], required: false },
-        { model: Branch, as: 'branches', attributes: [], required: false },
-        { model: TemiRobot, as: 'robots', attributes: [], required: false },
-      ],
-      group: ['Organization.id'],
-      subQuery: false,
-      raw: true,
-      nest: false,
+    const org = await Organization.findByPk(req.params.id);
+    if (!org) return res.status(404).json({ error: 'Organization not found' });
+
+    const [employeeCount, robotCount, visitsTotal, visitsThisMonth] = await Promise.all([
+      User.count({
+        where: {
+          organization_id: org.id,
+          role: { [Op.in]: STAFF_ROLES },
+          is_active: true,
+        },
+      }),
+      TemiRobot.count({ where: { organization_id: org.id } }),
+      Visit.count({ where: { organization_id: org.id } }),
+      Visit.count({
+        where: {
+          organization_id: org.id,
+          created_at: {
+            [Op.gte]: new Date(new Date().getFullYear(), new Date().getMonth(), 1),
+          },
+        },
+      }),
+    ]);
+
+    res.json({
+      ...org.toJSON(),
+      usage: { employeeCount, robotCount, visitsTotal, visitsThisMonth },
     });
-    if (!rows.length) return res.status(404).json({ error: 'Organization not found' });
-    res.json(rows[0]);
   } catch (err) {
     next(err);
   }
@@ -80,12 +84,19 @@ const getOrganization = async (req, res, next) => {
 
 const createOrganization = async (req, res, next) => {
   try {
-    const { name, slug, domain, address, phone, email, plan, maxEmployees,
-            adminName, adminEmail, adminPassword } = req.body;
+    const {
+      name, slug, domain, address, phone, email, plan, maxEmployees,
+      adminName, adminEmail, adminPassword,
+      subscriptionStart, subscriptionEnd, billingEmail, maxRobots,
+    } = req.body;
 
     if (!name || !slug || !adminEmail || !adminPassword) {
       return res.status(400).json({ error: 'name, slug, adminEmail, adminPassword are required' });
     }
+
+    const limits = PLAN_PRICES[plan] ? plan : 'standard';
+    const planDefaults = { standard: { emp: 10, robots: 1 }, professional: { emp: 50, robots: 3 }, enterprise: { emp: 500, robots: 10 } };
+    const defaults = planDefaults[limits];
 
     const result = await sequelize.transaction(async (t) => {
       const org = await Organization.create({
@@ -95,8 +106,12 @@ const createOrganization = async (req, res, next) => {
         address,
         phone,
         email,
-        plan: plan || 'standard',
-        max_employees: maxEmployees || 100,
+        plan: limits,
+        max_employees: maxEmployees || defaults.emp,
+        subscription_start: subscriptionStart || new Date(),
+        subscription_end: subscriptionEnd || null,
+        billing_email: billingEmail || email,
+        max_robots: maxRobots || defaults.robots,
       }, { transaction: t });
 
       const hash = await bcrypt.hash(adminPassword, 12);
@@ -126,19 +141,26 @@ const createOrganization = async (req, res, next) => {
 
 const updateOrganization = async (req, res, next) => {
   try {
-    const { name, domain, address, phone, email, plan, maxEmployees, isActive } = req.body;
+    const {
+      name, domain, address, phone, email, plan, maxEmployees, isActive,
+      subscriptionStart, subscriptionEnd, billingEmail, maxRobots,
+    } = req.body;
 
     const org = await Organization.findByPk(req.params.id);
     if (!org) return res.status(404).json({ error: 'Organization not found' });
 
-    if (name != null) org.name = name;
-    if (domain != null) org.domain = domain;
-    if (address != null) org.address = address;
-    if (phone != null) org.phone = phone;
-    if (email != null) org.email = email;
-    if (plan != null) org.plan = plan;
-    if (maxEmployees != null) org.max_employees = maxEmployees;
-    if (isActive != null) org.is_active = isActive;
+    if (name != null)              org.name              = name;
+    if (domain != null)            org.domain            = domain;
+    if (address != null)           org.address           = address;
+    if (phone != null)             org.phone             = phone;
+    if (email != null)             org.email             = email;
+    if (plan != null)              org.plan              = plan;
+    if (maxEmployees != null)      org.max_employees     = maxEmployees;
+    if (isActive != null)          org.is_active         = isActive;
+    if (subscriptionStart != null) org.subscription_start = subscriptionStart;
+    if (subscriptionEnd !== undefined) org.subscription_end = subscriptionEnd || null;
+    if (billingEmail != null)      org.billing_email     = billingEmail;
+    if (maxRobots != null)         org.max_robots        = maxRobots;
     await org.save();
 
     res.json(org.toJSON());
@@ -188,13 +210,43 @@ const getPlatformAnalytics = async (req, res, next) => {
       }),
     ]);
 
-    res.json({
-      organizations: orgs,
-      totalUsers,
-      totalVisits,
-      totalRobots,
-      recentActivity,
-    });
+    res.json({ organizations: orgs, totalUsers, totalVisits, totalRobots, recentActivity });
+  } catch (err) {
+    next(err);
+  }
+};
+
+// ── Platform Billing ───────────────────────────────────────────────────────
+
+const getPlatformBilling = async (req, res, next) => {
+  try {
+    const [planDist, expiringSoon, totalActive] = await Promise.all([
+      Organization.findAll({
+        attributes: ['plan', [literal('COUNT(*)::int'), 'count']],
+        where: { is_active: true },
+        group: ['plan'],
+        raw: true,
+      }),
+      Organization.findAll({
+        where: {
+          subscription_end: {
+            [Op.between]: [new Date(), new Date(Date.now() + 30 * 86_400_000)],
+          },
+          is_active: true,
+        },
+        attributes: ['id', 'name', 'plan', 'subscription_end', 'email'],
+        order: [['subscription_end', 'ASC']],
+        raw: true,
+      }),
+      Organization.count({ where: { is_active: true } }),
+    ]);
+
+    const mrr = planDist.reduce((sum, r) => sum + (PLAN_PRICES[r.plan] || 0) * r.count, 0);
+
+    const dist = { standard: 0, professional: 0, enterprise: 0 };
+    planDist.forEach((r) => { if (r.plan in dist) dist[r.plan] = r.count; });
+
+    res.json({ mrr, planDist: dist, expiringSoon, totalActive });
   } catch (err) {
     next(err);
   }
@@ -227,5 +279,5 @@ const listAllRobots = async (req, res, next) => {
 
 module.exports = {
   listOrganizations, getOrganization, createOrganization, updateOrganization, deleteOrganization,
-  getPlatformAnalytics, listAllRobots,
+  getPlatformAnalytics, getPlatformBilling, listAllRobots,
 };
