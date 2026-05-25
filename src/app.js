@@ -18,6 +18,7 @@ const temiRoutes = require('./routes/temi');
 const otpRoutes = require('./routes/otp');
 const platformRoutes = require('./routes/platform');
 const organizationRoutes = require('./routes/organization');
+const clientRoutes = require('./routes/client');
 const errorHandler = require('./middleware/errorHandler');
 const { initializeSocket } = require('./services/notificationService');
 const { setIo } = require('./controllers/temiController');
@@ -87,6 +88,7 @@ app.use('/api/temi', temiRoutes);
 app.use('/api/otp', otpRoutes);
 app.use('/api/platform', platformRoutes);
 app.use('/api/org', organizationRoutes);
+app.use('/api/client', clientRoutes);
 
 app.get('/health', (req, res) =>
   res.json({ status: 'ok', timestamp: new Date().toISOString(), service: 'Temi VMS API' })

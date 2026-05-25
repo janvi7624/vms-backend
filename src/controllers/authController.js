@@ -68,4 +68,42 @@ const changePassword = async (req, res, next) => {
   }
 };
 
-module.exports = { login, getMe, changePassword };
+const register = async (req, res, next) => {
+  try {
+    const { name, email, password, phone } = req.body;
+    if (!name || !email || !password) {
+      return res.status(400).json({ error: 'Name, email, and password are required' });
+    }
+    if (password.length < 8) {
+      return res.status(400).json({ error: 'Password must be at least 8 characters' });
+    }
+
+    const existing = await User.findOne({ where: { email: email.toLowerCase().trim() } });
+    if (existing) {
+      return res.status(409).json({ error: 'An account with this email already exists' });
+    }
+
+    const password_hash = await bcrypt.hash(password, 12);
+    const user = await User.create({
+      name: name.trim(),
+      email: email.toLowerCase().trim(),
+      password_hash,
+      phone: phone || null,
+      role: 'client',
+      is_active: true,
+    });
+
+    const token = jwt.sign(
+      { userId: user.id, role: user.role },
+      process.env.JWT_SECRET,
+      { expiresIn: process.env.JWT_EXPIRES_IN || '7d' }
+    );
+
+    const { password_hash: _, ...userData } = user.toJSON();
+    res.status(201).json({ token, user: userData });
+  } catch (err) {
+    next(err);
+  }
+};
+
+module.exports = { login, getMe, changePassword, register };
