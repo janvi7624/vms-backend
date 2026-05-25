@@ -9,7 +9,7 @@ const COUNT = [literal('COUNT(*)'), 'count'];
 // Middleware: ensure the acting user can only operate within their own org
 // (platform_super_admin can see any org via ?orgId query param)
 const resolveOrgId = (req) => {
-  if (req.user.role === 'platform_super_admin' && req.query.orgId) {
+  if (req.user.role === 'super_admin' && req.query.orgId) {
     return req.query.orgId;
   }
   return req.user.organization_id;
@@ -79,7 +79,7 @@ const listOrgEmployees = async (req, res, next) => {
     const { search, role, branchId, page = 1, limit = 20 } = req.query;
     const offset = (page - 1) * limit;
 
-    const and = [{ organization_id: orgId }, { role: { [Op.ne]: 'platform_super_admin' } }];
+    const and = [{ organization_id: orgId }, { role: { [Op.ne]: 'super_admin' } }];
     if (search) {
       and.push({ [Op.or]: [
         { name: { [Op.iLike]: `%${search}%` } },
@@ -121,7 +121,7 @@ const createOrgEmployee = async (req, res, next) => {
     if (!email || !name || !password) {
       return res.status(400).json({ error: 'Email, name, and password required' });
     }
-    const validRoles = ['org_admin', 'admin', 'employee', 'security'];
+    const validRoles = ['admin', 'sub_admin', 'employee', 'client'];
     if (!validRoles.includes(role)) {
       return res.status(400).json({ error: 'Invalid role' });
     }
@@ -238,7 +238,7 @@ const getOrgAnalytics = async (req, res, next) => {
 const getOrgPendingApprovals = async (req, res, next) => {
   try {
     const orgId = resolveOrgId(req);
-    const isAdmin = ['platform_super_admin', 'org_super_admin', 'org_admin', 'admin'].includes(req.user.role);
+    const isAdmin = ['super_admin', 'admin', 'sub_admin'].includes(req.user.role);
 
     const where = { organization_id: orgId, status: 'pending' };
     if (!isAdmin) where.host_employee_id = req.user.id;

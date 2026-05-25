@@ -57,7 +57,7 @@ const getVisits = async (req, res, next) => {
 // Admins see ALL pending impromptu visits; employees see only their own
 const getPendingApprovals = async (req, res, next) => {
   try {
-    const isAdmin = req.user.role === 'admin';
+    const isAdmin = ['super_admin', 'admin', 'sub_admin'].includes(req.user.role);
 
     const where = { status: 'pending', visit_type: 'impromptu' };
     if (!isAdmin) where.host_employee_id = req.user.id;
@@ -106,7 +106,7 @@ const approveVisit = async (req, res, next) => {
 
     // Admins can approve any visit; employees only their own
     const where = { id: visitId };
-    if (req.user.role !== 'admin') where.host_employee_id = req.user.id;
+    if (!['super_admin', 'admin', 'sub_admin'].includes(req.user.role)) where.host_employee_id = req.user.id;
 
     const visit = await Visit.findOne({
       where,
@@ -223,7 +223,7 @@ const searchEmployeesPublic = async (req, res, next) => {
     const { q = '' } = req.query;
     const rows = await User.findAll({
       where: {
-        role: ['employee', 'admin'],
+        role: ['super_admin', 'admin', 'sub_admin', 'employee'],
         is_active: true,
         [Op.or]: [
           { name: { [Op.iLike]: `%${q}%` } },

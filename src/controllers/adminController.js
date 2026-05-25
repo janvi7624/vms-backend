@@ -10,7 +10,7 @@ const getEmployees = async (req, res, next) => {
     const { page = 1, limit = 20, search, role } = req.query;
     const offset = (page - 1) * limit;
 
-    const and = [{ role: { [Op.ne]: 'security' } }];
+    const and = [{ role: { [Op.ne]: 'super_admin' } }];
     if (search) {
       and.push({ [Op.or]: [
         { name: { [Op.iLike]: `%${search}%` } },
@@ -44,7 +44,7 @@ const createEmployee = async (req, res, next) => {
     if (!email || !name || !password) {
       return res.status(400).json({ error: 'Email, name and password required' });
     }
-    if (!['admin', 'employee', 'security'].includes(role)) {
+    if (!['admin', 'sub_admin', 'employee', 'client'].includes(role)) {
       return res.status(400).json({ error: 'Invalid role' });
     }
 

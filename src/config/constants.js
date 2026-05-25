@@ -1,11 +1,10 @@
 module.exports = {
   ROLES: {
-    PLATFORM_SUPER_ADMIN: 'platform_super_admin',
-    ORG_SUPER_ADMIN:      'org_super_admin',
-    ORG_ADMIN:            'org_admin',
-    ADMIN:                'admin',
-    EMPLOYEE:             'employee',
-    SECURITY:             'security',
+    SUPER_ADMIN: 'super_admin',
+    ADMIN:       'admin',
+    SUB_ADMIN:   'sub_admin',
+    EMPLOYEE:    'employee',
+    CLIENT:      'client',
   },
   VISIT_TYPES: {
     PRE_PLANNED: 'pre_planned',

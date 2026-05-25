@@ -10,7 +10,7 @@ const initializeSocket = (socketIo) => {
   io.on('connection', (socket) => {
     socket.on('join', ({ userId, role }) => {
       socket.join(`user:${userId}`);
-      if (['admin','org_admin','org_super_admin'].includes(role)) socket.join('admin');
+      if (['super_admin','admin','sub_admin'].includes(role)) socket.join('admin');
       console.log(`Socket joined: user:${userId} (${role})`);
     });
 

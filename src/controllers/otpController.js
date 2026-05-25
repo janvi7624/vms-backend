@@ -162,7 +162,7 @@ const requestWalkIn = async (req, res, next) => {
     }
 
     const employee = await User.findOne({
-      where: { id: employeeId, role: ['employee', 'admin', 'org_admin', 'org_super_admin'], is_active: true },
+      where: { id: employeeId, role: ['super_admin', 'admin', 'sub_admin', 'employee'], is_active: true },
       attributes: ['id', 'name', 'email', 'location_id', 'organization_id'],
       raw: true,
     });

@@ -140,7 +140,7 @@ const getQRImage = async (req, res, next) => {
 
     // Authorization: only host employee or admin
     const hostId = qr.visit?.host_employee_id;
-    if (req.user.role !== 'admin' && req.user.id !== hostId) {
+    if (!['super_admin', 'admin', 'sub_admin'].includes(req.user.role) && req.user.id !== hostId) {
       return res.status(403).json({ error: 'Forbidden' });
     }
 

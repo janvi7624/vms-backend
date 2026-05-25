@@ -27,7 +27,7 @@ const listOrganizations = async (req, res, next) => {
         ],
       },
       include: [
-        { model: User, as: 'users', attributes: [], required: false, where: { role: { [Op.ne]: 'platform_super_admin' } } },
+        { model: User, as: 'users', attributes: [], required: false, where: { role: { [Op.ne]: 'super_admin' } } },
         { model: Visit, as: 'visits', attributes: [], required: false },
       ],
       group: ['Organization.id'],
@@ -104,7 +104,7 @@ const createOrganization = async (req, res, next) => {
         email: adminEmail.toLowerCase(),
         password_hash: hash,
         name: adminName || adminEmail.split('@')[0],
-        role: 'org_super_admin',
+        role: 'super_admin',
         organization_id: org.id,
         is_active: true,
       }, { transaction: t });
@@ -168,7 +168,7 @@ const getPlatformAnalytics = async (req, res, next) => {
         ],
         raw: true,
       }),
-      User.count({ where: { role: { [Op.ne]: 'platform_super_admin' } } }),
+      User.count({ where: { role: { [Op.ne]: 'super_admin' } } }),
       Visit.count(),
       TemiRobot.count(),
       Organization.findAll({
