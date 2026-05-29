@@ -42,6 +42,7 @@ const listOrganizations = async (req, res, next) => {
       nest: false,
     });
 
+    res.set('Cache-Control', 'no-store');
     res.json({ organizations, total, page: parseInt(page), limit: parseInt(limit) });
   } catch (err) {
     next(err);
@@ -185,8 +186,8 @@ const getPlatformAnalytics = async (req, res, next) => {
     const [orgs, totalUsers, totalVisits, totalRobots, recentActivity] = await Promise.all([
       Organization.findOne({
         attributes: [
-          [literal('COUNT(*)'), 'total'],
-          [literal('COUNT(*) FILTER (WHERE is_active)'), 'active'],
+          [literal('COUNT(*)::int'), 'total'],
+          [literal('COUNT(*) FILTER (WHERE is_active)::int'), 'active'],
         ],
         raw: true,
       }),
@@ -210,7 +211,19 @@ const getPlatformAnalytics = async (req, res, next) => {
       }),
     ]);
 
-    res.json({ organizations: orgs, totalUsers, totalVisits, totalRobots, recentActivity });
+    res.set('Cache-Control', 'no-store');
+    res.json({
+      organizations: {
+        total: orgs?.total ?? 0,
+        active: orgs?.active ?? 0,
+      },
+      totalOrganizations: orgs?.total ?? 0,
+      activeOrganizations: orgs?.active ?? 0,
+      totalUsers,
+      totalVisits,
+      totalRobots,
+      recentActivity,
+    });
   } catch (err) {
     next(err);
   }
@@ -246,6 +259,7 @@ const getPlatformBilling = async (req, res, next) => {
     const dist = { standard: 0, professional: 0, enterprise: 0 };
     planDist.forEach((r) => { if (r.plan in dist) dist[r.plan] = r.count; });
 
+    res.set('Cache-Control', 'no-store');
     res.json({ mrr, planDist: dist, expiringSoon, totalActive });
   } catch (err) {
     next(err);
