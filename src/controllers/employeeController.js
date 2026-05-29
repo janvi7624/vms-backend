@@ -156,7 +156,7 @@ const approveVisit = async (req, res, next) => {
       });
 
       // Notify kiosk that visit was approved (visitor can now use OTP)
-      emitToVisit(visitId, 'visit:approved', { visitId, otpSent });
+      emitToVisit(visitId, 'visit:approved', { visitId, otpSent, meetingRoom: visit.meeting_room || null });
 
       await AuditLog.create({
         action: 'approve_visit',
@@ -232,7 +232,7 @@ const searchEmployeesPublic = async (req, res, next) => {
       },
       attributes: ['id', 'name', 'department', 'desk_location'],
       order: [['name', 'ASC']],
-      limit: 10,
+      limit: 100,
       raw: true,
     });
     res.json(rows);

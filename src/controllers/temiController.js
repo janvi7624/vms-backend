@@ -10,10 +10,10 @@ const heartbeat = async (req, res, next) => {
     const { serial, status = 'online', currentTask, batteryLevel } = req.body;
     if (!serial) return res.status(400).json({ error: 'Serial number required' });
 
-    const updates = { status, current_task: currentTask, last_seen: new Date() };
+    const updates = { serial_number: serial, status, current_task: currentTask, last_seen: new Date() };
     if (batteryLevel != null) updates.battery_level = batteryLevel;
 
-    await TemiRobot.update(updates, { where: { serial_number: serial } });
+    await TemiRobot.upsert(updates);
 
     res.json({ ok: true });
   } catch (err) {
@@ -55,9 +55,8 @@ const syncLocations = async (req, res, next) => {
       return res.status(400).json({ error: 'serial and locations[] required' });
     }
 
-    await TemiRobot.update(
-      { saved_locations: locations, last_seen: new Date() },
-      { where: { serial_number: serial } }
+    await TemiRobot.upsert(
+      { serial_number: serial, saved_locations: locations, last_seen: new Date() }
     );
 
     // Notify admin dashboard of location update

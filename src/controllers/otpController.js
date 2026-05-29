@@ -113,7 +113,7 @@ const verifyOTP = async (req, res, next) => {
     const visitorName = visit.visitor?.name;
     const hostName = visit.host?.name;
     const hostDepartment = visit.host?.department;
-    const destination = visit.host?.desk_location || visit.meeting_room;
+    const destination = visit.meeting_room || visit.host?.desk_location;
 
     // Emit socket event so employee dashboard updates in real time
     if (_io) {
@@ -157,6 +157,8 @@ const verifyOTP = async (req, res, next) => {
  */
 const requestWalkIn = async (req, res, next) => {
   try {
+    console.log(req.body, "<====reqqq");
+    
     const { visitorName, visitorEmail, visitorPhone, visitorCompany, employeeId, purpose = 'Walk-in visit' } = req.body;
 
     if (!visitorName || !visitorEmail || !employeeId) {
