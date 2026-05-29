@@ -1,6 +1,6 @@
 const bcrypt = require('bcryptjs');
 const { Op, col, fn, literal } = require('sequelize');
-const { sequelize, Organization, User, Visit, TemiRobot, Branch, Location } = require('../models');
+const { sequelize, Organization, User, Visit, TemiRobot, Branch, Location, AuditLog, Visitor } = require('../models');
 
 const PLAN_PRICES = { standard: 49, professional: 149, enterprise: 499 };
 const STAFF_ROLES  = ['admin', 'sub_admin', 'employee'];
@@ -277,7 +277,186 @@ const listAllRobots = async (req, res, next) => {
   }
 };
 
+// ── Platform Users CRUD ────────────────────────────────────────────────────
+
+const listAllUsers = async (req, res, next) => {
+  try {
+    const { search, org, role, page = 1, limit = 20 } = req.query;
+    const offset = (parseInt(page) - 1) * parseInt(limit);
+    const where = {};
+    if (search) {
+      where[Op.or] = [
+        { name: { [Op.iLike]: `%${search}%` } },
+        { email: { [Op.iLike]: `%${search}%` } },
+      ];
+    }
+    if (org)  where.organization_id = org;
+    if (role) where.role = role;
+
+    const { count, rows } = await User.findAndCountAll({
+      where,
+      include: [{ model: Organization, as: 'organization', attributes: ['id', 'name', 'slug'] }],
+      attributes: { exclude: ['password_hash'] },
+      order: [['created_at', 'DESC']],
+      limit: parseInt(limit),
+      offset,
+    });
+    res.json({ users: rows, total: count });
+  } catch (err) { next(err); }
+};
+
+const createPlatformUser = async (req, res, next) => {
+  try {
+    const { name, email, password, role = 'employee', organizationId, phone, department } = req.body;
+    if (!email || !password || !organizationId) {
+      return res.status(400).json({ error: 'email, password, organizationId are required' });
+    }
+    const hash = await bcrypt.hash(password, 12);
+    const user = await User.create({
+      name: name || email.split('@')[0],
+      email: email.toLowerCase(),
+      password_hash: hash,
+      role,
+      organization_id: organizationId,
+      phone,
+      department,
+      is_active: true,
+    });
+    const safe = user.toJSON();
+    delete safe.password_hash;
+    res.status(201).json(safe);
+  } catch (err) { next(err); }
+};
+
+const updatePlatformUser = async (req, res, next) => {
+  try {
+    const { name, email, role, phone, department, isActive, password } = req.body;
+    const user = await User.findByPk(req.params.id);
+    if (!user) return res.status(404).json({ error: 'User not found' });
+    if (name != null)       user.name       = name;
+    if (email != null)      user.email      = email.toLowerCase();
+    if (role != null)       user.role       = role;
+    if (phone != null)      user.phone      = phone;
+    if (department != null) user.department = department;
+    if (isActive != null)   user.is_active  = isActive;
+    if (password)           user.password_hash = await bcrypt.hash(password, 12);
+    await user.save();
+    const safe = user.toJSON();
+    delete safe.password_hash;
+    res.json(safe);
+  } catch (err) { next(err); }
+};
+
+const deletePlatformUser = async (req, res, next) => {
+  try {
+    const user = await User.findByPk(req.params.id);
+    if (!user) return res.status(404).json({ error: 'User not found' });
+    if (user.role === 'super_admin') return res.status(403).json({ error: 'Cannot deactivate a super admin' });
+    await user.update({ is_active: false });
+    res.json({ message: 'User deactivated' });
+  } catch (err) { next(err); }
+};
+
+// ── Platform Visits ────────────────────────────────────────────────────────
+
+const listAllVisits = async (req, res, next) => {
+  try {
+    const { org, status, type, page = 1, limit = 20 } = req.query;
+    const offset = (parseInt(page) - 1) * parseInt(limit);
+    const where = {};
+    if (org)    where.organization_id = org;
+    if (status) where.status = status;
+    if (type)   where.visit_type = type;
+
+    const { count, rows } = await Visit.findAndCountAll({
+      where,
+      include: [
+        { model: Organization, as: 'organization', attributes: ['id', 'name'] },
+        { model: User,         as: 'host',         attributes: ['id', 'name', 'email'] },
+        { model: Visitor,      as: 'visitor',      attributes: ['id', 'name', 'email', 'company', 'phone'] },
+      ],
+      order: [['created_at', 'DESC']],
+      limit: parseInt(limit),
+      offset,
+    });
+    res.json({ visits: rows, total: count });
+  } catch (err) { next(err); }
+};
+
+const updatePlatformVisit = async (req, res, next) => {
+  try {
+    const { status, notes, declinedReason } = req.body;
+    const visit = await Visit.findByPk(req.params.id);
+    if (!visit) return res.status(404).json({ error: 'Visit not found' });
+    if (status != null)          visit.status          = status;
+    if (notes != null)           visit.notes           = notes;
+    if (declinedReason != null)  visit.declined_reason = declinedReason;
+    await visit.save();
+    res.json(visit);
+  } catch (err) { next(err); }
+};
+
+const deletePlatformVisit = async (req, res, next) => {
+  try {
+    const deleted = await Visit.destroy({ where: { id: req.params.id } });
+    if (!deleted) return res.status(404).json({ error: 'Visit not found' });
+    res.json({ message: 'Visit deleted' });
+  } catch (err) { next(err); }
+};
+
+// ── Audit Logs ─────────────────────────────────────────────────────────────
+
+const listAuditLogs = async (req, res, next) => {
+  try {
+    const { action, page = 1, limit = 50 } = req.query;
+    const offset = (parseInt(page) - 1) * parseInt(limit);
+    const where = {};
+    if (action) where.action = { [Op.iLike]: `%${action}%` };
+
+    const { count, rows } = await AuditLog.findAndCountAll({
+      where,
+      include: [
+        {
+          model: User, as: 'performer',
+          attributes: ['id', 'name', 'email', 'role'],
+          required: false,
+        },
+      ],
+      order: [['created_at', 'DESC']],
+      limit: parseInt(limit),
+      offset,
+    });
+    res.json({ logs: rows, total: count });
+  } catch (err) { next(err); }
+};
+
+// ── Robots update / delete ─────────────────────────────────────────────────
+
+const updateRobot = async (req, res, next) => {
+  try {
+    const { name, status } = req.body;
+    const robot = await TemiRobot.findByPk(req.params.id);
+    if (!robot) return res.status(404).json({ error: 'Robot not found' });
+    if (name != null)   robot.name   = name;
+    if (status != null) robot.status = status;
+    await robot.save();
+    res.json(robot);
+  } catch (err) { next(err); }
+};
+
+const deleteRobot = async (req, res, next) => {
+  try {
+    const deleted = await TemiRobot.destroy({ where: { id: req.params.id } });
+    if (!deleted) return res.status(404).json({ error: 'Robot not found' });
+    res.json({ message: 'Robot deleted' });
+  } catch (err) { next(err); }
+};
+
 module.exports = {
   listOrganizations, getOrganization, createOrganization, updateOrganization, deleteOrganization,
   getPlatformAnalytics, getPlatformBilling, listAllRobots,
+  listAllUsers, createPlatformUser, updatePlatformUser, deletePlatformUser,
+  listAllVisits, updatePlatformVisit, deletePlatformVisit,
+  listAuditLogs,
+  updateRobot, deleteRobot,
 };
