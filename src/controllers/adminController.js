@@ -30,7 +30,7 @@ const getEmployees = async (req, res, next) => {
     const total = await User.count({ where });
     const employees = await User.findAll({
       where,
-      attributes: ['id', 'email', 'name', 'role', 'department', 'phone', 'desk_location', 'is_active', 'created_at'],
+      attributes: ['id', 'email', 'name', 'role', 'department', 'phone', 'desk_location', 'is_active', [literal('"User"."created_at"'), 'created_at']],
       order: [['name', 'ASC']],
       limit: parseInt(limit),
       offset: parseInt(offset),

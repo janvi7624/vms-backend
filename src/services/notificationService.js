@@ -180,12 +180,43 @@ const emitToVisit = (visitId, event, data) => {
   if (io) io.to(`visit:${visitId}`).emit(event, data);
 };
 
+const notifyServiceRequest = async ({ serial, item = 'refreshment', organizationId, requestId }) => {
+  const label   = item.charAt(0).toUpperCase() + item.slice(1);
+  const title   = `☕ ${label} Request`;
+  const message = `A visitor at Temi (${serial}) has requested ${item}.`;
+
+  if (organizationId) {
+    const where = {
+      organization_id: organizationId,
+      role: { [Op.in]: ['admin', 'sub_admin'] },
+      is_active: true,
+    };
+    const staff = await User.findAll({ where, attributes: ['id'], raw: true });
+    await Promise.allSettled(
+      staff.map((s) =>
+        createNotification({
+          userId:  s.id,
+          visitId: null,
+          type:    NOTIFICATION_TYPES.SERVICE_REQUEST,
+          title,
+          message,
+        })
+      )
+    );
+  }
+
+  if (io) {
+    io.to('admin').emit(SOCKET_EVENTS.TEMI_SERVICE_REQUEST, { requestId, serial, item, title, message });
+  }
+};
+
 module.exports = {
   initializeSocket,
   createNotification,
   notifyVisitRequest,
   notifyVisitApproved,
   notifyVisitorCheckedIn,
+  notifyServiceRequest,
   getUnreadNotifications,
   markNotificationsRead,
   emitToVisit,

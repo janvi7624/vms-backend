@@ -1,5 +1,6 @@
 const { col } = require('sequelize');
-const { TemiRobot, Visit, AuditLog, Location } = require('../models');
+const { TemiRobot, Visit, AuditLog, Location, ServiceRequest, User } = require('../models');
+const { notifyServiceRequest } = require('../services/notificationService');
 
 let io;
 const setIo = (socketIo) => { io = socketIo; };
@@ -138,4 +139,99 @@ const reportError = async (req, res, next) => {
   }
 };
 
-module.exports = { heartbeat, getConfig, getLocations, syncLocations, checkoutVisit, reportError, setIo };
+// POST /temi/service-request — Temi voice command triggers a service request
+const createServiceRequest = async (req, res, next) => {
+  try {
+    const { serial, item = 'refreshment' } = req.body;
+    if (!serial) return res.status(400).json({ error: 'serial required' });
+
+    const robot = await TemiRobot.findOne({
+      where: { serial_number: serial },
+      attributes: ['organization_id'],
+      raw: true,
+    });
+
+    const request = await ServiceRequest.create({
+      serial,
+      organization_id: robot?.organization_id ?? null,
+      item,
+      status: 'pending',
+    });
+
+    await AuditLog.create({
+      action:      'service_requested',
+      entity_type: 'temi_service_request',
+      entity_id:   null,
+      metadata:    { serial, item, requestId: request.id },
+    });
+
+    await notifyServiceRequest({
+      serial,
+      item,
+      organizationId: robot?.organization_id ?? null,
+      requestId:      request.id,
+    });
+
+    res.status(201).json({ ok: true, requestId: request.id });
+  } catch (err) {
+    next(err);
+  }
+};
+
+// GET /temi/service-requests — admin/sub_admin fetches pending requests for their org
+const getServiceRequests = async (req, res, next) => {
+  try {
+    const { organizationId, status } = req.query;
+    const where = {};
+    if (organizationId) where.organization_id = organizationId;
+    if (status)         where.status           = status;
+
+    const requests = await ServiceRequest.findAll({
+      where,
+      order:   [['created_at', 'DESC']],
+      limit:   100,
+      include: [{
+        model:      User,
+        as:         'fulfilledBy',
+        attributes: ['id', 'name'],
+        required:   false,
+      }],
+    });
+
+    res.json(requests);
+  } catch (err) {
+    next(err);
+  }
+};
+
+// PATCH /temi/service-requests/:id — mark fulfilled or dismissed
+const updateServiceRequest = async (req, res, next) => {
+  try {
+    const { id }       = req.params;
+    const { status }   = req.body;
+    const userId       = req.user?.id ?? null;
+
+    if (!['fulfilled', 'dismissed'].includes(status)) {
+      return res.status(400).json({ error: 'status must be fulfilled or dismissed' });
+    }
+
+    const updates = { status };
+    if (status === 'fulfilled') {
+      updates.fulfilled_by = userId;
+      updates.fulfilled_at = new Date();
+    }
+
+    const [count] = await ServiceRequest.update(updates, { where: { id } });
+    if (!count) return res.status(404).json({ error: 'Request not found' });
+
+    res.json({ ok: true });
+  } catch (err) {
+    next(err);
+  }
+};
+
+module.exports = {
+  heartbeat, getConfig, getLocations, syncLocations, checkoutVisit, reportError,
+  createServiceRequest, getServiceRequests, updateServiceRequest,
+  setIo,
+};

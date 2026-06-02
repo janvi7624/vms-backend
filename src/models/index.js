@@ -11,8 +11,9 @@ const Visit        = require('./visit')(sequelize, DataTypes);
 const QrCode       = require('./qrCode')(sequelize, DataTypes);
 const AuditLog     = require('./auditLog')(sequelize, DataTypes);
 const Notification = require('./notification')(sequelize, DataTypes);
-const TemiRobot    = require('./temiRobot')(sequelize, DataTypes);
-const OtpSession   = require('./otpSession')(sequelize, DataTypes);
+const TemiRobot      = require('./temiRobot')(sequelize, DataTypes);
+const OtpSession     = require('./otpSession')(sequelize, DataTypes);
+const ServiceRequest = require('./serviceRequest')(sequelize, DataTypes);
 
 // ── Associations ─────────────────────────────────────────────────────────────
 // Organization
@@ -72,6 +73,10 @@ TemiRobot.hasMany(Visit,          { as: 'visits', foreignKey: 'robot_id', onDele
 OtpSession.belongsTo(Visit,        { as: 'visit', foreignKey: 'visit_id' });
 OtpSession.belongsTo(Organization, { as: 'organization', foreignKey: 'organization_id' });
 
+// ServiceRequest
+ServiceRequest.belongsTo(Organization, { as: 'organization', foreignKey: 'organization_id' });
+ServiceRequest.belongsTo(User,         { as: 'fulfilledBy', foreignKey: 'fulfilled_by' });
+
 module.exports = {
   sequelize,
   Sequelize,
@@ -86,4 +91,5 @@ module.exports = {
   Notification,
   TemiRobot,
   OtpSession,
+  ServiceRequest,
 };

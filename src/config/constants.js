@@ -24,6 +24,7 @@ module.exports = {
     VISIT_DECLINED:     'visit_declined',
     VISITOR_ARRIVED:    'visitor_arrived',
     VISITOR_CHECKED_IN: 'visitor_checked_in',
+    SERVICE_REQUEST:    'service_request',
   },
   OTP: {
     LENGTH:           6,
@@ -42,5 +43,6 @@ module.exports = {
     VISITOR_CHECKED_IN: 'visit:checked_in',
     NOTIFICATION:       'notification',
     OTP_APPROVED:       'visit:otp_approved',
+    TEMI_SERVICE_REQUEST: 'temi:service_request',
   },
 };
