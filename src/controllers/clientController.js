@@ -2,6 +2,7 @@
 
 const { Op } = require('sequelize');
 const { Visit, Visitor, User, TemiRobot } = require('../models');
+const { notifyVisitRequest } = require('../services/notificationService');
 
 const ROBOT_ATTRS = ['id', 'name', 'serial_number', 'status', 'current_task'];
 
@@ -165,6 +166,20 @@ const bookVisit = async (req, res, next) => {
       location_id:      employee.location_id,
       organization_id:  employee.organization_id,
     });
+
+    // Notify employee and all admins/sub_admins in the org
+    try {
+      await notifyVisitRequest({
+        employeeId,
+        organizationId: employee.organization_id,
+        employeeName:   employee.name,
+        visitId:        visit.id,
+        visitorName:    req.user.name,
+        visitorCompany: visitorCompany || null,
+      });
+    } catch (e) {
+      console.error('[notify] bookVisit notification failed (non-fatal):', e.message);
+    }
 
     res.status(201).json({
       visitId: visit.id,

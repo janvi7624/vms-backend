@@ -48,9 +48,10 @@ const validateQR = async (req, res, next) => {
     visit.checked_in_at = new Date();
     await visit.save();
 
-    // Notify employee of check-in
+    // Notify employee + admins of check-in
     await notifyVisitorCheckedIn({
-      employeeId: visit.host_employee_id,
+      employeeId:     visit.host_employee_id,
+      organizationId: visit.organization_id,
       visitId,
       visitorName,
       meetingRoom: visit.meeting_room,

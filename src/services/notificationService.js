@@ -11,7 +11,7 @@ const initializeSocket = (socketIo) => {
   io.on('connection', (socket) => {
     socket.on('join', ({ userId, role }) => {
       socket.join(`user:${userId}`);
-      if (['super_admin','admin','sub_admin'].includes(role)) socket.join('admin');
+      if (['super_admin', 'admin', 'sub_admin'].includes(role)) socket.join('admin');
       console.log(`Socket joined: user:${userId} (${role})`);
     });
 
@@ -25,7 +25,6 @@ const initializeSocket = (socketIo) => {
       socket.join(`visit:${visitId}`);
     });
 
-    // Kiosk joins org room to receive OTP approval events
     socket.on('org:join', ({ organizationId }) => {
       if (organizationId) socket.join(`org:${organizationId}`);
     });
@@ -50,7 +49,6 @@ const createNotification = async ({ userId, visitId, type, title, message }) => 
     io.to(`user:${userId}`).emit(SOCKET_EVENTS.NOTIFICATION, notification);
   }
 
-  // Push notification to mobile device
   const user = await User.findByPk(userId, { attributes: ['fcm_token'], raw: true });
   if (user?.fcm_token) {
     await sendPushNotification(user.fcm_token, title, message, {
@@ -62,17 +60,56 @@ const createNotification = async ({ userId, visitId, type, title, message }) => 
   return notification;
 };
 
-const notifyVisitRequest = async ({ employeeId, visitId, visitorName, visitorCompany }) => {
+// Find all admin/sub_admin users in an org, excluding a specific userId
+const findOrgAdmins = async (organizationId, excludeUserId = null) => {
+  const where = {
+    organization_id: organizationId,
+    role: { [Op.in]: ['admin', 'sub_admin'] },
+    is_active: true,
+  };
+  if (excludeUserId) where.id = { [Op.ne]: excludeUserId };
+  return User.findAll({ where, attributes: ['id'], raw: true });
+};
+
+const notifyVisitRequest = async ({
+  employeeId,
+  organizationId,
+  employeeName,
+  visitId,
+  visitorName,
+  visitorCompany,
+}) => {
+  const visitorDesc = `${visitorName}${visitorCompany ? ` from ${visitorCompany}` : ''}`;
+
+  // 1. Notify the target employee (host)
   await createNotification({
     userId: employeeId,
     visitId,
     type: NOTIFICATION_TYPES.VISIT_REQUEST,
     title: 'New Visitor Request',
-    message: `${visitorName}${visitorCompany ? ` from ${visitorCompany}` : ''} is waiting for your approval.`,
+    message: `${visitorDesc} is waiting for your approval.`,
   });
+
+  // 2. Notify every admin / sub_admin in the same org
+  if (organizationId) {
+    const admins = await findOrgAdmins(organizationId, employeeId);
+    const staffTag = employeeName ? ` to meet ${employeeName}` : '';
+    await Promise.allSettled(
+      admins.map((admin) =>
+        createNotification({
+          userId: admin.id,
+          visitId,
+          type: NOTIFICATION_TYPES.VISIT_REQUEST,
+          title: 'New Visit Request',
+          message: `${visitorDesc} has requested a visit${staffTag}.`,
+        })
+      )
+    );
+  }
 
   if (io) {
     io.to(`user:${employeeId}`).emit(SOCKET_EVENTS.VISIT_REQUEST, { visitId, visitorName, visitorCompany });
+    io.to('admin').emit(SOCKET_EVENTS.VISIT_REQUEST, { visitId, visitorName, visitorCompany });
   }
 };
 
@@ -82,14 +119,39 @@ const notifyVisitApproved = async ({ employeeId, visitId, visitorEmail, visitorN
   }
 };
 
-const notifyVisitorCheckedIn = async ({ employeeId, visitId, visitorName, meetingRoom }) => {
+const notifyVisitorCheckedIn = async ({
+  employeeId,
+  organizationId,
+  visitId,
+  visitorName,
+  meetingRoom,
+}) => {
+  const msg = `${visitorName} has checked in${meetingRoom ? ` and is heading to ${meetingRoom}` : ''}.`;
+
+  // 1. Notify the host employee
   await createNotification({
     userId: employeeId,
     visitId,
     type: NOTIFICATION_TYPES.VISITOR_CHECKED_IN,
     title: 'Visitor Checked In',
-    message: `${visitorName} has checked in${meetingRoom ? ` and is heading to ${meetingRoom}` : ''}.`,
+    message: msg,
   });
+
+  // 2. Push FCM to all admins / sub_admins in the org
+  if (organizationId) {
+    const admins = await findOrgAdmins(organizationId, employeeId);
+    await Promise.allSettled(
+      admins.map((admin) =>
+        createNotification({
+          userId: admin.id,
+          visitId,
+          type: NOTIFICATION_TYPES.VISITOR_CHECKED_IN,
+          title: 'Visitor Checked In',
+          message: msg,
+        })
+      )
+    );
+  }
 
   if (io) {
     io.to(`user:${employeeId}`).emit(SOCKET_EVENTS.VISITOR_CHECKED_IN, { visitId, visitorName, meetingRoom });

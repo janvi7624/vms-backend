@@ -100,7 +100,7 @@ const createImpromptu = async (req, res, next) => {
     // Check employee exists
     const employee = await User.findOne({
       where: { id: employeeId, role: ['super_admin', 'admin', 'sub_admin', 'employee'], is_active: true },
-      attributes: ['id', 'name', 'email', 'location_id'],
+      attributes: ['id', 'name', 'email', 'location_id', 'organization_id'],
       raw: true,
     });
     if (!employee) {
@@ -122,7 +122,9 @@ const createImpromptu = async (req, res, next) => {
     try {
       await notifyVisitRequest({
         employeeId,
-        visitId: visit.id,
+        organizationId: employee.organization_id,
+        employeeName:   employee.name,
+        visitId:        visit.id,
         visitorName,
         visitorCompany,
       });
