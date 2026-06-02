@@ -106,4 +106,15 @@ const register = async (req, res, next) => {
   }
 };
 
-module.exports = { login, getMe, changePassword, register };
+const registerDevice = async (req, res, next) => {
+  try {
+    const { fcmToken } = req.body;
+    if (!fcmToken) return res.status(400).json({ error: 'fcmToken required' });
+    await User.update({ fcm_token: fcmToken }, { where: { id: req.user.id } });
+    res.json({ message: 'Device registered' });
+  } catch (err) {
+    next(err);
+  }
+};
+
+module.exports = { login, getMe, changePassword, register, registerDevice };

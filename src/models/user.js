@@ -12,6 +12,7 @@ module.exports = (sequelize, DataTypes) =>
     is_active: { type: DataTypes.BOOLEAN, defaultValue: true },
     organization_id: DataTypes.UUID,
     branch_id: DataTypes.UUID,
+    fcm_token: DataTypes.TEXT,
   }, {
     tableName: 'users',
     timestamps: true,

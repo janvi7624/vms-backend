@@ -33,7 +33,9 @@ const httpServer = createServer(app);
 app.set('trust proxy', 1);
 
 const isAllowedOrigin = (origin) => {
-  if (!origin) return true;
+  // Allow no-origin requests (mobile apps, Postman, server-to-server)
+  // and React Native's literal "null" origin string
+  if (!origin || origin === 'null') return true;
   const allowed = [
     process.env.FRONTEND_URL,
     'http://localhost:5173',
@@ -43,7 +45,6 @@ const isAllowedOrigin = (origin) => {
     allowed.includes(origin) ||
     /^https?:\/\/192\.168\.\d+\.\d+:\d+$/.test(origin) ||
     /^https?:\/\/10\.\d+\.\d+\.\d+:\d+$/.test(origin) ||
-    // Allow all GitHub Codespaces domains
     /\.app\.github\.dev$/.test(origin) ||
     /\.github\.dev$/.test(origin)
   );
@@ -63,11 +64,16 @@ setQrIo(io);
 setOtpIo(io);
 setAdminIo(io);
 
-app.use(helmet({ crossOriginEmbedderPolicy: false }));
-app.use(cors({
+const corsOptions = {
   origin: (origin, cb) => cb(null, isAllowedOrigin(origin)),
   credentials: true,
-}));
+  methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'Cache-Control', 'Pragma'],
+};
+
+app.use(helmet({ crossOriginEmbedderPolicy: false }));
+app.options('*', cors(corsOptions));   // handle preflight for all routes
+app.use(cors(corsOptions));
 
 const apiLimiter = rateLimit({ windowMs: 15 * 60 * 1000, max: 200 });
 app.use('/api/', apiLimiter);

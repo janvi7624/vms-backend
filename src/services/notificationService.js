@@ -1,6 +1,7 @@
 const { Op } = require('sequelize');
-const { Notification } = require('../models');
+const { Notification, User } = require('../models');
 const { SOCKET_EVENTS, NOTIFICATION_TYPES } = require('../config/constants');
+const { sendPushNotification } = require('./firebaseService');
 
 let io;
 
@@ -47,6 +48,15 @@ const createNotification = async ({ userId, visitId, type, title, message }) => 
 
   if (io) {
     io.to(`user:${userId}`).emit(SOCKET_EVENTS.NOTIFICATION, notification);
+  }
+
+  // Push notification to mobile device
+  const user = await User.findByPk(userId, { attributes: ['fcm_token'], raw: true });
+  if (user?.fcm_token) {
+    await sendPushNotification(user.fcm_token, title, message, {
+      type,
+      visitId: String(visitId ?? ''),
+    });
   }
 
   return notification;
