@@ -2,6 +2,8 @@ const bcrypt = require('bcryptjs');
 const { Op, col, fn, literal } = require('sequelize');
 const { User, Visit, Visitor, AuditLog, TemiRobot, Location, Organization, sequelize } = require('../models');
 const { canManage } = require('../middleware/roleCheck');
+const { emitAnalyticsUpdate } = require('../services/notificationService');
+const { SOCKET_EVENTS } = require('../config/constants');
 
 let adminIo;
 const setAdminIo = (io) => { adminIo = io; };
@@ -100,6 +102,12 @@ const createEmployee = async (req, res, next) => {
       metadata: { email, role },
     });
 
+    const orgId = req.user.organization_id;
+    if (adminIo) {
+      adminIo.to('admin').emit(SOCKET_EVENTS.EMPLOYEE_CHANGED, { action: 'created', id: user.id, organizationId: orgId });
+      if (orgId) adminIo.to(`org:${orgId}`).emit(SOCKET_EVENTS.EMPLOYEE_CHANGED, { action: 'created', id: user.id, organizationId: orgId });
+    }
+    emitAnalyticsUpdate(orgId);
     res.status(201).json({
       id: user.id, email: user.email, name: user.name, role: user.role, department: user.department,
     });
@@ -136,7 +144,12 @@ const updateEmployee = async (req, res, next) => {
     if (isActive != null) user.is_active = isActive;
     if (role != null) user.role = role;
     await user.save();
-
+    const orgId = req.user.organization_id;
+    if (adminIo) {
+      adminIo.to('admin').emit(SOCKET_EVENTS.EMPLOYEE_CHANGED, { action: 'updated', id: user.id, organizationId: orgId });
+      if (orgId) adminIo.to(`org:${orgId}`).emit(SOCKET_EVENTS.EMPLOYEE_CHANGED, { action: 'updated', id: user.id, organizationId: orgId });
+    }
+    emitAnalyticsUpdate(orgId);
     res.json({
       id: user.id, email: user.email, name: user.name,
       role: user.role, department: user.department, is_active: user.is_active,
@@ -161,6 +174,12 @@ const deleteEmployee = async (req, res, next) => {
 
     user.is_active = false;
     await user.save();
+    const orgId = req.user.organization_id;
+    if (adminIo) {
+      adminIo.to('admin').emit(SOCKET_EVENTS.EMPLOYEE_CHANGED, { action: 'deleted', id: user.id, organizationId: orgId });
+      if (orgId) adminIo.to(`org:${orgId}`).emit(SOCKET_EVENTS.EMPLOYEE_CHANGED, { action: 'deleted', id: user.id, organizationId: orgId });
+    }
+    emitAnalyticsUpdate(orgId);
     res.json({ message: 'Employee deactivated' });
   } catch (err) {
     next(err);
@@ -550,6 +569,7 @@ const assignRobot = async (req, res, next) => {
       metadata: { robotId },
     });
 
+    if (adminIo) adminIo.to('admin').emit('visit:updated', { id: visit.id });
     res.json({ ok: true, robot_id: visit.robot_id });
   } catch (err) {
     next(err);

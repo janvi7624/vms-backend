@@ -9,6 +9,7 @@ const path = require('path');
 const { createServer } = require('http');
 const { Server } = require('socket.io');
 
+const jwt = require('jsonwebtoken');
 const authRoutes = require('./routes/auth');
 const visitorRoutes = require('./routes/visitor');
 const employeeRoutes = require('./routes/employee');
@@ -56,6 +57,32 @@ const io = new Server(httpServer, {
     methods: ['GET', 'POST'],
     credentials: true,
   },
+  // Increase ping timeouts for mobile clients in background
+  pingTimeout: 60000,
+  pingInterval: 25000,
+  // Allow connection recovery after brief disconnects
+  connectionStateRecovery: { maxDisconnectionDuration: 120000 },
+});
+
+// Socket auth middleware — accepts JWT token sent as auth.token or query.token.
+// Kiosk/visitor connections without a token are allowed (role = 'visitor').
+io.use((socket, next) => {
+  const token = socket.handshake.auth?.token || socket.handshake.query?.token;
+  if (!token) {
+    socket.data.role = 'visitor';
+    return next();
+  }
+  try {
+    const decoded = jwt.verify(token, process.env.JWT_SECRET);
+    socket.data.userId = decoded.id;
+    socket.data.role   = decoded.role;
+    socket.data.organizationId = decoded.organizationId;
+    next();
+  } catch {
+    // Allow connection but without authenticated identity
+    socket.data.role = 'visitor';
+    next();
+  }
 });
 
 initializeSocket(io);

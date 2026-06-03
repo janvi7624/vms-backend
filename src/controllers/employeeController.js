@@ -1,7 +1,7 @@
 const { Op, col, literal } = require('sequelize');
 const { Visit, Visitor, User, QrCode, AuditLog } = require('../models');
 const { sendOTPCode, sendVisitDeclined } = require('../services/emailService');
-const { notifyVisitApproved, emitToVisit } = require('../services/notificationService');
+const { notifyVisitApproved, notifyVisitDeclined, emitToVisit } = require('../services/notificationService');
 const { createOTPSession } = require('../services/otpService');
 const { VISIT_STATUS } = require('../config/constants');
 
@@ -153,6 +153,8 @@ const approveVisit = async (req, res, next) => {
         visitId,
         visitorEmail,
         visitorName,
+        organizationId: visit.organization_id || req.user.organization_id,
+        meetingRoom: visit.meeting_room || null,
       });
 
       // Notify kiosk that visit was approved (visitor can now use OTP)
@@ -179,6 +181,15 @@ const approveVisit = async (req, res, next) => {
           reason: declineReason,
         }).catch((e) => console.error('Decline email error:', e.message));
       }
+
+      // Real-time: broadcast decline to all relevant parties
+      await notifyVisitDeclined({
+        employeeId: req.user.id,
+        visitId,
+        visitorName,
+        organizationId: visit.organization_id || req.user.organization_id,
+        reason: declineReason,
+      });
 
       await AuditLog.create({
         action: 'decline_visit',

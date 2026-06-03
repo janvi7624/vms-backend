@@ -24,7 +24,11 @@ module.exports = {
     VISIT_DECLINED:     'visit_declined',
     VISITOR_ARRIVED:    'visitor_arrived',
     VISITOR_CHECKED_IN: 'visitor_checked_in',
+    VISITOR_CHECKED_OUT:'visitor_checked_out',
     SERVICE_REQUEST:    'service_request',
+    ANNOUNCEMENT:       'announcement',
+    EMERGENCY:          'emergency',
+    EMPLOYEE_CHANGED:   'employee_changed',
   },
   OTP: {
     LENGTH:           6,
@@ -37,12 +41,29 @@ module.exports = {
     IMPROMPTU_HOURS:   parseInt(process.env.QR_IMPROMPTU_EXPIRY_HOURS)  || 2,
   },
   SOCKET_EVENTS: {
-    VISIT_REQUEST:      'visit:request',
-    VISIT_APPROVED:     'visit:approved',
-    VISIT_DECLINED:     'visit:declined',
-    VISITOR_CHECKED_IN: 'visit:checked_in',
-    NOTIFICATION:       'notification',
-    OTP_APPROVED:       'visit:otp_approved',
+    // Visit lifecycle
+    VISIT_REQUEST:        'visit:request',
+    VISIT_APPROVED:       'visit:approved',
+    VISIT_DECLINED:       'visit:declined',
+    VISITOR_CHECKED_IN:   'visit:checked_in',
+    VISIT_COMPLETED:      'visit:completed',
+    OTP_APPROVED:         'visit:otp_approved',
+    // Notifications
+    NOTIFICATION:         'notification',
+    // Dashboard / analytics
+    ANALYTICS_UPDATE:     'analytics:update',
+    STATS_UPDATE:         'stats:update',
+    // Employee management
+    EMPLOYEE_CHANGED:     'employee:changed',
+    // Temi robot
     TEMI_SERVICE_REQUEST: 'temi:service_request',
+    TEMI_STATUS:          'temi:status',
+    TEMI_LOCATIONS_SYNCED:'temi:locations_synced',
+    TEMI_COMMAND:         'temi:command',
+    TEMI_ESCORT:          'temi:escort',
+    TEMI_ERROR:           'temi:error',
+    // Announcements & alerts
+    ANNOUNCEMENT:         'announcement',
+    EMERGENCY:            'emergency',
   },
 };

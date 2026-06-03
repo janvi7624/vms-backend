@@ -3,6 +3,7 @@ const { Op, col, fn, literal } = require('sequelize');
 const { Branch, User, Visit, Visitor } = require('../models');
 const { createOTPSession } = require('../services/otpService');
 const { sendOTPCode } = require('../services/emailService');
+const { emitToAdmin } = require('../services/notificationService');
 
 const COUNT = [literal('COUNT(*)'), 'count'];
 
@@ -330,6 +331,7 @@ const declineOrgVisit = async (req, res, next) => {
     const update = { status: 'declined' };
     if (reason != null) update.notes = reason;
     await Visit.update(update, { where: { id: req.params.id, organization_id: orgId } });
+    emitToAdmin('visit:updated', { id: req.params.id, status: 'declined' });
     res.json({ message: 'Visit declined' });
   } catch (err) {
     next(err);

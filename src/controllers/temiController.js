@@ -1,6 +1,7 @@
 const { col } = require('sequelize');
 const { TemiRobot, Visit, AuditLog, Location, ServiceRequest, User } = require('../models');
-const { notifyServiceRequest } = require('../services/notificationService');
+const { notifyServiceRequest, notifyVisitCompleted, emitAnalyticsUpdate } = require('../services/notificationService');
+const { SOCKET_EVENTS } = require('../config/constants');
 
 let io;
 const setIo = (socketIo) => { io = socketIo; };
@@ -15,6 +16,12 @@ const heartbeat = async (req, res, next) => {
     if (batteryLevel != null) updates.battery_level = batteryLevel;
 
     await TemiRobot.upsert(updates);
+
+    // Broadcast live robot status to admin dashboards
+    if (io) {
+      const statusPayload = { serial, status, currentTask, batteryLevel, lastSeen: new Date().toISOString() };
+      io.to('admin').emit(SOCKET_EVENTS.TEMI_STATUS, statusPayload);
+    }
 
     res.json({ ok: true });
   } catch (err) {
@@ -60,10 +67,11 @@ const syncLocations = async (req, res, next) => {
       { serial_number: serial, saved_locations: locations, last_seen: new Date() }
     );
 
-    // Notify admin dashboard of location update
-    if (io) io.to('admin').emit('temi:locations_synced', { serial, locations });
+    // Broadcast synced locations to admin dashboards and approval screens
+    if (io) {
+      io.to('admin').emit(SOCKET_EVENTS.TEMI_LOCATIONS_SYNCED, { serial, locations });
+    }
 
-    console.log(`[Temi ${serial}] Synced ${locations.length} locations:`, locations);
     res.json({ ok: true, synced: locations.length, locations });
   } catch (err) {
     next(err);
@@ -95,6 +103,11 @@ const checkoutVisit = async (req, res, next) => {
     const { visitId } = req.body;
     if (!visitId) return res.status(400).json({ error: 'visitId required' });
 
+    const visit = await Visit.findByPk(visitId, {
+      attributes: ['id', 'host_employee_id', 'organization_id', 'visitor_id'],
+      include: [{ association: 'visitor', attributes: ['name'], required: false }],
+    });
+
     await Visit.update(
       { status: 'completed', checked_out_at: new Date() },
       { where: { id: visitId } }
@@ -107,9 +120,13 @@ const checkoutVisit = async (req, res, next) => {
       metadata: { source: 'temi' },
     });
 
-    if (io) {
-      io.to('admin').emit('visit:completed', { visitId });
-    }
+    const visitorName = visit?.visitor?.name ?? 'Visitor';
+    await notifyVisitCompleted({
+      employeeId: visit?.host_employee_id,
+      organizationId: visit?.organization_id,
+      visitId,
+      visitorName,
+    });
 
     res.json({ ok: true });
   } catch (err) {
@@ -130,7 +147,7 @@ const reportError = async (req, res, next) => {
     });
 
     if (io) {
-      io.to('admin').emit('temi:error', { serial, errorType, visitId, message });
+      io.to('admin').emit(SOCKET_EVENTS.TEMI_ERROR, { serial, errorType, visitId, message });
     }
 
     res.json({ ok: true });
