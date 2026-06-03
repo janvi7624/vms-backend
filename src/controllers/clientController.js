@@ -140,13 +140,7 @@ const bookVisit = async (req, res, next) => {
     if (!employee) return res.status(404).json({ error: 'Employee not found' });
 
     let visitor = await Visitor.findOne({ where: { email: req.user.email } });
-    if (visitor) {
-      await visitor.update({
-        name: req.user.name,
-        ...(visitorPhone  && { phone:   visitorPhone }),
-        ...(visitorCompany && { company: visitorCompany }),
-      });
-    } else {
+    if (!visitor) {
       visitor = await Visitor.create({
         name:            req.user.name,
         email:           req.user.email,

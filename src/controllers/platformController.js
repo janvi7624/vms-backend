@@ -446,13 +446,23 @@ const listAuditLogs = async (req, res, next) => {
 
 // ── Robots update / delete ─────────────────────────────────────────────────
 
+const listAllLocations = async (req, res, next) => {
+  try {
+    const { Location } = require('../models');
+    const locations = await Location.findAll({ attributes: ['id', 'name', 'address'], order: [['name', 'ASC']] });
+    res.json(locations);
+  } catch (err) { next(err); }
+};
+
 const updateRobot = async (req, res, next) => {
   try {
-    const { name, status } = req.body;
+    const { name, status, organization_id, location_id } = req.body;
     const robot = await TemiRobot.findByPk(req.params.id);
     if (!robot) return res.status(404).json({ error: 'Robot not found' });
-    if (name != null)   robot.name   = name;
-    if (status != null) robot.status = status;
+    if (name            != null) robot.name            = name;
+    if (status          != null) robot.status          = status;
+    if (organization_id !== undefined) robot.organization_id = organization_id || null;
+    if (location_id     !== undefined) robot.location_id     = location_id     || null;
     await robot.save();
     res.json(robot);
   } catch (err) { next(err); }
@@ -468,7 +478,7 @@ const deleteRobot = async (req, res, next) => {
 
 module.exports = {
   listOrganizations, getOrganization, createOrganization, updateOrganization, deleteOrganization,
-  getPlatformAnalytics, getPlatformBilling, listAllRobots,
+  getPlatformAnalytics, getPlatformBilling, listAllRobots, listAllLocations,
   listAllUsers, createPlatformUser, updatePlatformUser, deletePlatformUser,
   listAllVisits, updatePlatformVisit, deletePlatformVisit,
   listAuditLogs,

@@ -174,12 +174,11 @@ const requestWalkIn = async (req, res, next) => {
       return res.status(404).json({ error: 'Employee not found' });
     }
 
-    // Upsert visitor
+    // Find or create visitor — never overwrite so old visits keep their original data
     let visitorId;
     const existing = await Visitor.findOne({ where: { email: visitorEmail.toLowerCase() } });
     if (existing) {
       visitorId = existing.id;
-      await existing.update({ name: visitorName, phone: visitorPhone, company: visitorCompany });
     } else {
       const created = await Visitor.create({
         name: visitorName,

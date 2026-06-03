@@ -3,7 +3,7 @@ const { authenticate } = require('../middleware/auth');
 const { requirePlatformAdmin } = require('../middleware/roleCheck');
 const {
   listOrganizations, getOrganization, createOrganization, updateOrganization, deleteOrganization,
-  getPlatformAnalytics, getPlatformBilling, listAllRobots,
+  getPlatformAnalytics, getPlatformBilling, listAllRobots, listAllLocations,
   listAllUsers, createPlatformUser, updatePlatformUser, deletePlatformUser,
   listAllVisits, updatePlatformVisit, deletePlatformVisit,
   listAuditLogs,
@@ -38,6 +38,9 @@ router.delete('/visits/:id', deletePlatformVisit);
 router.get('/robots',        listAllRobots);
 router.put('/robots/:id',    updateRobot);
 router.delete('/robots/:id', deleteRobot);
+
+// Locations (for robot assignment)
+router.get('/locations',     listAllLocations);
 
 // Audit logs
 router.get('/audit-logs', listAuditLogs);

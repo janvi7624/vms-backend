@@ -170,13 +170,15 @@ const deleteEmployee = async (req, res, next) => {
 // GET /admin/visits — all visits with filters
 const getAllVisits = async (req, res, next) => {
   try {
-    const { status, type, employeeId, from, to, page = 1, limit = 50 } = req.query;
+    const { status, type, employeeId, visitorId, from, to, page = 1, limit = 50 } = req.query;
     const offset = (page - 1) * limit;
 
     const where = {};
-    if (status) where.status = status;
-    if (type) where.visit_type = type;
+    if (req.user.organization_id) where.organization_id = req.user.organization_id;
+    if (status)     where.status           = status;
+    if (type)       where.visit_type       = type;
     if (employeeId) where.host_employee_id = employeeId;
+    if (visitorId)  where.visitor_id       = visitorId;
     if (from || to) {
       where.created_at = {};
       if (from) where.created_at[Op.gte] = from;

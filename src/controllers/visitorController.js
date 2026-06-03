@@ -6,14 +6,12 @@ const { generateSecureToken } = require('../utils/helpers');
 const { VISIT_TYPES, VISIT_STATUS } = require('../config/constants');
 const { createOTPSession } = require('../services/otpService');
 
-// Upsert a visitor by email; returns the visitor id.
+// Find or create a visitor by email; never overwrites existing data so old visits
+// retain the information that was entered at the time of the original submission.
 const upsertVisitor = async ({ visitorName, visitorEmail, visitorPhone, visitorCompany, organizationId }) => {
   if (visitorEmail) {
     const existing = await Visitor.findOne({ where: { email: visitorEmail.toLowerCase() } });
-    if (existing) {
-      await existing.update({ name: visitorName, phone: visitorPhone, company: visitorCompany });
-      return existing.id;
-    }
+    if (existing) return existing.id;
     const created = await Visitor.create({
       name: visitorName,
       email: visitorEmail.toLowerCase(),
