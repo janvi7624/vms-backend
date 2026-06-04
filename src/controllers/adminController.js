@@ -53,7 +53,7 @@ const createEmployee = async (req, res, next) => {
     if (!email || !name || !password) {
       return res.status(400).json({ error: 'Email, name and password required' });
     }
-    if (!['admin', 'sub_admin', 'employee', 'client'].includes(role)) {
+    if (!['admin', 'sub_admin', 'employee', 'receptionist', 'client'].includes(role)) {
       return res.status(400).json({ error: 'Invalid role' });
     }
 
@@ -89,8 +89,8 @@ const createEmployee = async (req, res, next) => {
       role,
       department,
       phone,
-      desk_location: deskLocation,
-      location_id: locationId,
+      desk_location: deskLocation || null,
+      location_id: locationId || null,
       organization_id: req.user.organization_id,
     });
 

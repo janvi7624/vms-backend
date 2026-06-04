@@ -1,10 +1,11 @@
 module.exports = {
   ROLES: {
-    SUPER_ADMIN: 'super_admin',
-    ADMIN:       'admin',
-    SUB_ADMIN:   'sub_admin',
-    EMPLOYEE:    'employee',
-    CLIENT:      'client',
+    SUPER_ADMIN:  'super_admin',
+    ADMIN:        'admin',
+    SUB_ADMIN:    'sub_admin',
+    EMPLOYEE:     'employee',
+    RECEPTIONIST: 'receptionist',
+    CLIENT:       'client',
   },
   VISIT_TYPES: {
     PRE_PLANNED: 'pre_planned',
@@ -65,5 +66,9 @@ module.exports = {
     // Announcements & alerts
     ANNOUNCEMENT:         'announcement',
     EMERGENCY:            'emergency',
+    // Receptionist
+    SERVICE_REQUEST_NEW:  'service_request:new',
+    SERVICE_FOLLOWUP:     'service_request:followup',
+    SERVICE_FULFILLED:    'service_request:fulfilled',
   },
 };

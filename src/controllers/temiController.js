@@ -1,6 +1,6 @@
 const { col } = require('sequelize');
 const { TemiRobot, Visit, AuditLog, Location, ServiceRequest, User } = require('../models');
-const { notifyServiceRequest, notifyVisitCompleted, emitAnalyticsUpdate } = require('../services/notificationService');
+const { notifyServiceRequest, notifyServiceFollowUp, notifyVisitCompleted, emitAnalyticsUpdate } = require('../services/notificationService');
 const { SOCKET_EVENTS } = require('../config/constants');
 
 let io;
@@ -157,9 +157,10 @@ const reportError = async (req, res, next) => {
 };
 
 // POST /temi/service-request — Temi voice command triggers a service request
+// Body: { serial, item, visitId?, visitorName?, location? }
 const createServiceRequest = async (req, res, next) => {
   try {
-    const { serial, item = 'refreshment' } = req.body;
+    const { serial, item = 'refreshment', visitId, visitorName, location } = req.body;
     if (!serial) return res.status(400).json({ error: 'serial required' });
 
     const robot = await TemiRobot.findOne({
@@ -168,10 +169,21 @@ const createServiceRequest = async (req, res, next) => {
       raw: true,
     });
 
+    // If robot has no org, try to derive it from the visit
+    let organizationId = robot?.organization_id ?? null;
+    if (!organizationId && visitId) {
+      const visit = await Visit.findByPk(visitId, { attributes: ['organization_id'], raw: true });
+      organizationId = visit?.organization_id ?? null;
+    }
+
     const request = await ServiceRequest.create({
       serial,
-      organization_id: robot?.organization_id ?? null,
+      organization_id: organizationId,
+      visit_id:    visitId    ?? null,
+      visitor_name: visitorName ?? null,
+      location:    location   ?? null,
       item,
+      follow_up_items: [],
       status: 'pending',
     });
 
@@ -179,17 +191,52 @@ const createServiceRequest = async (req, res, next) => {
       action:      'service_requested',
       entity_type: 'temi_service_request',
       entity_id:   null,
-      metadata:    { serial, item, requestId: request.id },
+      metadata:    { serial, item, visitId, visitorName, location, requestId: request.id },
     });
 
     await notifyServiceRequest({
       serial,
       item,
-      organizationId: robot?.organization_id ?? null,
-      requestId:      request.id,
+      organizationId,
+      requestId:   request.id,
+      visitId:     visitId     ?? null,
+      visitorName: visitorName ?? null,
+      location:    location    ?? null,
     });
 
     res.status(201).json({ ok: true, requestId: request.id });
+  } catch (err) {
+    next(err);
+  }
+};
+
+// POST /temi/service-request/:id/followup — Temi appends a follow-up item
+// Called when visitor responds to "Do you need anything else?"
+const addFollowUp = async (req, res, next) => {
+  try {
+    const { id }   = req.params;
+    const { item, serial } = req.body;
+    if (!item) return res.status(400).json({ error: 'item required' });
+
+    const request = await ServiceRequest.findByPk(id);
+    if (!request) return res.status(404).json({ error: 'Request not found' });
+
+    const followUps = Array.isArray(request.follow_up_items) ? [...request.follow_up_items] : [];
+    followUps.push({ item, ts: new Date().toISOString() });
+    request.follow_up_items = followUps;
+    await request.save();
+
+    const allItems = [request.item, ...followUps.map(f => f.item)];
+    notifyServiceFollowUp({
+      requestId:      request.id,
+      organizationId: request.organization_id,
+      visitorName:    request.visitor_name,
+      location:       request.location,
+      newItem:        item,
+      allItems,
+    });
+
+    res.json({ ok: true, follow_up_items: followUps });
   } catch (err) {
     next(err);
   }
@@ -249,6 +296,6 @@ const updateServiceRequest = async (req, res, next) => {
 
 module.exports = {
   heartbeat, getConfig, getLocations, syncLocations, checkoutVisit, reportError,
-  createServiceRequest, getServiceRequests, updateServiceRequest,
+  createServiceRequest, addFollowUp, getServiceRequests, updateServiceRequest,
   setIo,
 };

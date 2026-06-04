@@ -20,6 +20,7 @@ const otpRoutes = require('./routes/otp');
 const platformRoutes = require('./routes/platform');
 const organizationRoutes = require('./routes/organization');
 const clientRoutes = require('./routes/client');
+const receptionistRoutes = require('./routes/receptionist');
 const errorHandler = require('./middleware/errorHandler');
 const { initializeSocket } = require('./services/notificationService');
 const { setIo } = require('./controllers/temiController');
@@ -74,9 +75,9 @@ io.use((socket, next) => {
   }
   try {
     const decoded = jwt.verify(token, process.env.JWT_SECRET);
-    socket.data.userId = decoded.id;
+    socket.data.userId = decoded.id ?? decoded.userId;
     socket.data.role   = decoded.role;
-    socket.data.organizationId = decoded.organizationId;
+    socket.data.organizationId = decoded.organizationId ?? null;
     next();
   } catch {
     // Allow connection but without authenticated identity
@@ -124,6 +125,7 @@ app.use('/api/otp', otpRoutes);
 app.use('/api/platform', platformRoutes);
 app.use('/api/org', organizationRoutes);
 app.use('/api/client', clientRoutes);
+app.use('/api/receptionist', receptionistRoutes);
 
 app.get('/health', (req, res) =>
   res.json({ status: 'ok', timestamp: new Date().toISOString(), service: 'Temi VMS API' })

@@ -12,7 +12,7 @@ const login = async (req, res, next) => {
     const user = await User.findOne({
       where: { email: email.toLowerCase().trim() },
       attributes: ['id', 'email', 'password_hash', 'name', 'role', 'department',
-        'phone', 'desk_location', 'location_id', 'is_active'],
+        'phone', 'desk_location', 'location_id', 'is_active', 'organization_id'],
       raw: true,
     });
 
@@ -29,7 +29,7 @@ const login = async (req, res, next) => {
     }
 
     const token = jwt.sign(
-      { userId: user.id, role: user.role },
+      { id: user.id, userId: user.id, role: user.role, organizationId: user.organization_id ?? null },
       process.env.JWT_SECRET,
       { expiresIn: process.env.JWT_EXPIRES_IN || '7d' }
     );

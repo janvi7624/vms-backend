@@ -7,8 +7,12 @@ const errorHandler = (err, req, res, next) => {
   if (err.code === '23503') {
     return res.status(400).json({ error: 'Referenced record not found' });
   }
-  if (err.name === 'ValidationError') {
-    return res.status(400).json({ error: err.message });
+  if (err.name === 'ValidationError' || err.name === 'SequelizeValidationError') {
+    const detail = err.errors?.map(e => e.message).join(', ') || err.message;
+    return res.status(400).json({ error: detail });
+  }
+  if (err.name === 'SequelizeUniqueConstraintError') {
+    return res.status(409).json({ error: 'Duplicate entry — record already exists' });
   }
 
   const status = err.status || err.statusCode || 500;

@@ -17,6 +17,9 @@ const initializeSocket = (socketIo) => {
       if (['super_admin', 'admin', 'sub_admin'].includes(role)) {
         socket.join('admin');
       }
+      if (role === 'receptionist' && organizationId) {
+        socket.join(`receptionist:${organizationId}`);
+      }
       if (organizationId) {
         socket.join(`org:${organizationId}`);
       }
@@ -109,7 +112,7 @@ const emitToUser = (userId, event, data) => {
 };
 
 const emitToOrg = (organizationId, event, data) => {
-  if (io) io.to(`org:${organizationId}`).emit(event, data);
+  if (io && organizationId) io.to(`org:${organizationId}`).emit(event, data);
 };
 
 // Broadcast an analytics refresh signal — frontends re-fetch stats on receipt
@@ -271,23 +274,43 @@ const notifyVisitCompleted = async ({ employeeId, organizationId, visitId, visit
   emitAnalyticsUpdate(organizationId);
 };
 
-const notifyServiceRequest = async ({ serial, item = 'refreshment', organizationId, requestId }) => {
-  const label   = item.charAt(0).toUpperCase() + item.slice(1);
-  const title   = `${label} Request`;
-  const message = `A visitor at Temi (${serial}) has requested ${item}.`;
+const notifyServiceRequest = async ({
+  serial, item = 'refreshment', organizationId, requestId,
+  visitId = null, visitorName = null, location = null, followUpItems = [],
+}) => {
+  const label        = item.charAt(0).toUpperCase() + item.slice(1);
+  const visitorLabel = visitorName ? ` from ${visitorName}` : '';
+  const roomLabel    = location    ? ` at ${location.replace(/_/g, ' ')}` : '';
+  const title        = `${label} Request`;
+  const message      = `Visitor${visitorLabel}${roomLabel} has requested ${item}.`;
+
+  const payload = {
+    requestId, serial, item, title, message,
+    visitId, visitorName, location, followUpItems, organizationId,
+  };
 
   if (organizationId) {
-    const where = {
+    // Notify admins/sub_admins
+    const adminWhere = {
       organization_id: organizationId,
       role: { [Op.in]: ['admin', 'sub_admin'] },
       is_active: true,
     };
-    const staff = await User.findAll({ where, attributes: ['id'], raw: true });
+    const adminStaff = await User.findAll({ where: adminWhere, attributes: ['id'], raw: true });
+    // Notify receptionists
+    const recepWhere = {
+      organization_id: organizationId,
+      role: 'receptionist',
+      is_active: true,
+    };
+    const receptionists = await User.findAll({ where: recepWhere, attributes: ['id'], raw: true });
+    const allStaff = [...adminStaff, ...receptionists];
+
     await Promise.allSettled(
-      staff.map((s) =>
+      allStaff.map((s) =>
         createNotification({
           userId:  s.id,
-          visitId: null,
+          visitId,
           type:    NOTIFICATION_TYPES.SERVICE_REQUEST,
           title,
           message,
@@ -297,8 +320,23 @@ const notifyServiceRequest = async ({ serial, item = 'refreshment', organization
   }
 
   if (io) {
-    io.to('admin').emit(SOCKET_EVENTS.TEMI_SERVICE_REQUEST, { requestId, serial, item, title, message });
-    if (organizationId) io.to(`org:${organizationId}`).emit(SOCKET_EVENTS.TEMI_SERVICE_REQUEST, { requestId, serial, item, title, message });
+    io.to('admin').emit(SOCKET_EVENTS.TEMI_SERVICE_REQUEST, payload);
+    if (organizationId) {
+      // org room — all staff (including receptionist) who joined with this org
+      io.to(`org:${organizationId}`).emit(SOCKET_EVENTS.TEMI_SERVICE_REQUEST, payload);
+      // dedicated receptionist room
+      io.to(`receptionist:${organizationId}`).emit(SOCKET_EVENTS.SERVICE_REQUEST_NEW, payload);
+    }
+  }
+};
+
+const notifyServiceFollowUp = ({ requestId, organizationId, visitorName, location, newItem, allItems }) => {
+  if (!io) return;
+  const payload = { requestId, organizationId, visitorName, location, newItem, allItems };
+  io.to('admin').emit(SOCKET_EVENTS.SERVICE_FOLLOWUP, payload);
+  if (organizationId) {
+    io.to(`org:${organizationId}`).emit(SOCKET_EVENTS.SERVICE_FOLLOWUP, payload);
+    io.to(`receptionist:${organizationId}`).emit(SOCKET_EVENTS.SERVICE_FOLLOWUP, payload);
   }
 };
 
@@ -330,6 +368,7 @@ module.exports = {
   notifyVisitorCheckedIn,
   notifyVisitCompleted,
   notifyServiceRequest,
+  notifyServiceFollowUp,
   getUnreadNotifications,
   markNotificationsRead,
   emitToVisit,
