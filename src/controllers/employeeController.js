@@ -21,11 +21,12 @@ const getVisits = async (req, res, next) => {
       where,
       attributes: {
         include: [
-          [col('visitor.name'), 'visitor_name'],
-          [col('visitor.email'), 'visitor_email'],
-          [col('visitor.phone'), 'visitor_phone'],
-          [col('visitor.company'), 'company'],
+          [col('visitor.name'),      'visitor_name'],
+          [col('visitor.email'),     'visitor_email'],
+          [col('visitor.phone'),     'visitor_phone'],
+          [col('visitor.company'),   'company'],
           [col('visitor.photo_url'), 'photo_url'],
+          [col('visitor.photo_url'), 'visitor_photo'],
           [col('qrCode.expires_at'), 'qr_expires_at'],
           [col('qrCode.is_used'), 'qr_used'],
         ],
@@ -63,10 +64,12 @@ const getPendingApprovals = async (req, res, next) => {
     if (!isAdmin) where.host_employee_id = req.user.id;
 
     const attributesInclude = [
-      [col('visitor.name'), 'visitor_name'],
-      [col('visitor.email'), 'visitor_email'],
-      [col('visitor.phone'), 'visitor_phone'],
-      [col('visitor.company'), 'company'],
+      [col('visitor.name'),      'visitor_name'],
+      [col('visitor.email'),     'visitor_email'],
+      [col('visitor.phone'),     'visitor_phone'],
+      [col('visitor.company'),   'company'],
+      [col('visitor.photo_url'), 'visitor_photo'],
+      [col('visitor.photo_url'), 'photo_url'],
     ];
     const include = [{ model: Visitor, as: 'visitor', attributes: [], required: true }];
 

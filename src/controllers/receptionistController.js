@@ -1,5 +1,5 @@
 const { Op } = require('sequelize');
-const { ServiceRequest, User } = require('../models');
+const { ServiceRequest, User, Visit, Visitor } = require('../models');
 const { SOCKET_EVENTS } = require('../config/constants');
 const { emitToOrg } = require('../services/notificationService');
 
@@ -18,12 +18,13 @@ const getServiceRequests = async (req, res, next) => {
       where,
       order: [['created_at', 'DESC']],
       limit: 100,
-      include: [{
-        model:      User,
-        as:         'fulfilledBy',
-        attributes: ['id', 'name'],
-        required:   false,
-      }],
+      include: [
+        { model: User, as: 'fulfilledBy', attributes: ['id', 'name'], required: false },
+        {
+          model:      Visit, as: 'visit', attributes: [], required: false,
+          include: [{ model: Visitor, as: 'visitor', attributes: ['photo_url'], required: false }],
+        },
+      ],
     });
 
     res.json(requests);

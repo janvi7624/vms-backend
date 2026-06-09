@@ -157,9 +157,11 @@ const verifyOTP = async (req, res, next) => {
  */
 const requestWalkIn = async (req, res, next) => {
   try {
-    console.log(req.body, "<====reqqq");
-    
-    const { visitorName, visitorEmail, visitorPhone, visitorCompany, employeeId, purpose = 'Walk-in visit' } = req.body;
+    const {
+      visitorName, visitorEmail, visitorPhone, visitorCompany,
+      employeeId, purpose = 'Walk-in visit',
+      visitorPhoto, // base64 data-URI captured by Temi camera
+    } = req.body;
 
     if (!visitorName || !visitorEmail || !employeeId) {
       return res.status(400).json({ error: 'Name, email, and employee are required' });
@@ -174,39 +176,65 @@ const requestWalkIn = async (req, res, next) => {
       return res.status(404).json({ error: 'Employee not found' });
     }
 
-    // Find or create visitor — never overwrite so old visits keep their original data
-    let visitorId;
+    // Find or create visitor
+    let visitor;
     const existing = await Visitor.findOne({ where: { email: visitorEmail.toLowerCase() } });
     if (existing) {
-      visitorId = existing.id;
+      visitor = existing;
     } else {
-      const created = await Visitor.create({
+      visitor = await Visitor.create({
         name: visitorName,
         email: visitorEmail.toLowerCase(),
         phone: visitorPhone,
         company: visitorCompany,
         organization_id: employee.organization_id,
       });
-      visitorId = created.id;
+    }
+
+    // Save captured face photo (non-fatal if it fails)
+    let savedPhotoUrl = visitor.photo_url ?? null;
+    if (visitorPhoto) {
+      console.log(`[WalkIn] Photo received for visitor ${visitor.id}, size=${visitorPhoto.length} chars`);
+      try {
+        const { v4: uuidv4 } = require('uuid');
+        const faceService = require('../services/faceService');
+        const filename = `${visitor.id}-${uuidv4().slice(0, 8)}.jpg`;
+        savedPhotoUrl = faceService.saveVisitorPhoto(visitorPhoto, filename);
+        await visitor.update({ photo_url: savedPhotoUrl });
+        console.log(`[WalkIn] Photo saved OK: ${savedPhotoUrl}`);
+
+        // Index face for future recognition (if Rekognition configured)
+        if (faceService.ENABLED && !visitor.face_id) {
+          const buf    = faceService.photoUrlToBuffer(visitorPhoto);
+          const faceId = await faceService.indexFace(employee.organization_id, visitor.id, buf);
+          if (faceId) await visitor.update({ face_id: faceId });
+        }
+      } catch (e) {
+        console.error('[WalkIn] Photo save error (non-fatal):', e.message, e.stack);
+      }
+    } else {
+      console.log(`[WalkIn] No photo in request for visitor ${visitor.id}`);
     }
 
     const visit = await Visit.create({
-      visitor_id: visitorId,
+      visitor_id:      visitor.id,
       host_employee_id: employeeId,
-      visit_type: 'impromptu',
+      visit_type:      'impromptu',
       purpose,
-      status: 'pending',
-      location_id: employee.location_id,
+      status:          'pending',
+      location_id:     employee.location_id,
       organization_id: employee.organization_id,
+      visitor_photo:   savedPhotoUrl,
     });
 
     // Notify employee via socket
     if (_io) {
       _io.to(`user:${employeeId}`).emit('visit:request', {
-        visitId: visit.id,
+        visitId:     visit.id,
         visitorName,
         visitorCompany,
         purpose,
+        visitorPhoto: savedPhotoUrl,
       });
     }
 

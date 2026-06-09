@@ -209,11 +209,13 @@ const getAllVisits = async (req, res, next) => {
       where,
       attributes: {
         include: [
-          [col('visitor.name'), 'visitor_name'],
-          [col('visitor.email'), 'visitor_email'],
-          [col('visitor.company'), 'company'],
-          [col('host.name'), 'employee_name'],
-          [col('host.department'), 'department'],
+          [col('visitor.name'),      'visitor_name'],
+          [col('visitor.email'),     'visitor_email'],
+          [col('visitor.phone'),     'visitor_phone'],
+          [col('visitor.company'),   'company'],
+          [col('visitor.photo_url'), 'visitor_photo'],
+          [col('host.name'),         'employee_name'],
+          [col('host.department'),   'department'],
         ],
       },
       include: [
@@ -514,7 +516,7 @@ const getFloorQueue = async (req, res, next) => {
           ],
         },
         include: [
-          { model: Visitor,   as: 'visitor', attributes: ['name', 'company', 'phone', 'email'] },
+          { model: Visitor,   as: 'visitor', attributes: ['name', 'company', 'phone', 'email', 'photo_url'] },
           { model: User,      as: 'host',    attributes: ['name', 'department', 'email'] },
           { model: TemiRobot, as: 'robot',   attributes: ['id', 'name', 'serial_number', 'status'] },
         ],

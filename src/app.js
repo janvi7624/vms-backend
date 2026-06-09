@@ -6,6 +6,7 @@ const helmet = require('helmet');
 const morgan = require('morgan');
 const rateLimit = require('express-rate-limit');
 const path = require('path');
+const fs   = require('fs');
 const { createServer } = require('http');
 const { Server } = require('socket.io');
 
@@ -99,6 +100,10 @@ const corsOptions = {
   allowedHeaders: ['Content-Type', 'Authorization', 'Cache-Control', 'Pragma'],
 };
 
+// Ensure uploads directory exists at startup (avoids first-request creation race)
+const UPLOADS_DIR = path.join(__dirname, '../uploads/visitor-photos');
+fs.mkdirSync(UPLOADS_DIR, { recursive: true });
+
 app.use(helmet({ crossOriginEmbedderPolicy: false }));
 app.options('*', cors(corsOptions));   // handle preflight for all routes
 app.use(cors(corsOptions));
@@ -113,7 +118,10 @@ if (process.env.NODE_ENV !== 'test') {
   app.use(morgan('dev'));
 }
 
-app.use('/uploads', express.static(path.join(__dirname, '../uploads')));
+app.use('/uploads', (req, res, next) => {
+  res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin');
+  next();
+}, express.static(path.join(__dirname, '../uploads')));
 
 app.use('/api/auth', authRoutes);
 app.use('/api/visitor', visitorRoutes);

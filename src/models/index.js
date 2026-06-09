@@ -75,7 +75,8 @@ OtpSession.belongsTo(Organization, { as: 'organization', foreignKey: 'organizati
 
 // ServiceRequest
 ServiceRequest.belongsTo(Organization, { as: 'organization', foreignKey: 'organization_id' });
-ServiceRequest.belongsTo(User,         { as: 'fulfilledBy', foreignKey: 'fulfilled_by' });
+ServiceRequest.belongsTo(User,         { as: 'fulfilledBy',  foreignKey: 'fulfilled_by' });
+ServiceRequest.belongsTo(Visit,        { as: 'visit',        foreignKey: 'visit_id' });
 
 module.exports = {
   sequelize,
