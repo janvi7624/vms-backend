@@ -7,6 +7,7 @@ module.exports = (sequelize, DataTypes) =>
     company: DataTypes.STRING(255),
     photo_url: DataTypes.STRING(500),
     face_id: DataTypes.STRING(255),
+    face_descriptor: DataTypes.TEXT,
     organization_id: DataTypes.UUID,
   }, {
     tableName: 'visitors',

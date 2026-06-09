@@ -6,12 +6,19 @@ const { generateSecureToken } = require('../utils/helpers');
 const { VISIT_TYPES, VISIT_STATUS } = require('../config/constants');
 const { createOTPSession } = require('../services/otpService');
 
-// Find or create a visitor by email; never overwrites existing data so old visits
-// retain the information that was entered at the time of the original submission.
+// Find or create a visitor by email; updates name/company/phone on every submission
+// so changes propagate across all visits (all queries join from the visitors table).
 const upsertVisitor = async ({ visitorName, visitorEmail, visitorPhone, visitorCompany, organizationId }) => {
   if (visitorEmail) {
     const existing = await Visitor.findOne({ where: { email: visitorEmail.toLowerCase() } });
-    if (existing) return existing.id;
+    if (existing) {
+      const updates = {};
+      if (visitorName    && visitorName    !== existing.name)    updates.name    = visitorName;
+      if (visitorCompany !== undefined && visitorCompany !== existing.company) updates.company = visitorCompany;
+      if (visitorPhone   !== undefined && visitorPhone   !== existing.phone)   updates.phone   = visitorPhone;
+      if (Object.keys(updates).length) await existing.update(updates);
+      return existing.id;
+    }
     const created = await Visitor.create({
       name: visitorName,
       email: visitorEmail.toLowerCase(),

@@ -176,11 +176,16 @@ const requestWalkIn = async (req, res, next) => {
       return res.status(404).json({ error: 'Employee not found' });
     }
 
-    // Find or create visitor
+    // Find or create visitor; always sync name/company/phone so updates propagate everywhere
     let visitor;
     const existing = await Visitor.findOne({ where: { email: visitorEmail.toLowerCase() } });
     if (existing) {
       visitor = existing;
+      const updates = {};
+      if (visitorName    && visitorName    !== existing.name)    updates.name    = visitorName;
+      if (visitorCompany !== undefined && visitorCompany !== existing.company) updates.company = visitorCompany;
+      if (visitorPhone   !== undefined && visitorPhone   !== existing.phone)   updates.phone   = visitorPhone;
+      if (Object.keys(updates).length) await visitor.update(updates);
     } else {
       visitor = await Visitor.create({
         name: visitorName,
@@ -203,11 +208,21 @@ const requestWalkIn = async (req, res, next) => {
         await visitor.update({ photo_url: savedPhotoUrl });
         console.log(`[WalkIn] Photo saved OK: ${savedPhotoUrl}`);
 
-        // Index face for future recognition (if Rekognition configured)
-        if (faceService.ENABLED && !visitor.face_id) {
-          const buf    = faceService.photoUrlToBuffer(visitorPhoto);
-          const faceId = await faceService.indexFace(employee.organization_id, visitor.id, buf);
-          if (faceId) await visitor.update({ face_id: faceId });
+        // Save local face descriptor for next-visit recognition
+        try {
+          const buf        = faceService.photoUrlToBuffer(visitorPhoto);
+          const descriptor = await faceService.computeDescriptor(buf);
+          if (descriptor) {
+            await faceService.saveDescriptor(visitor.id, descriptor);
+            console.log(`[WalkIn] Face descriptor saved for visitor ${visitor.id}`);
+          }
+          // Also index in Rekognition if configured
+          if (faceService.ENABLED && !visitor.face_id) {
+            const faceId = await faceService.indexFace(employee.organization_id, visitor.id, buf);
+            if (faceId) await visitor.update({ face_id: faceId });
+          }
+        } catch (descErr) {
+          console.error('[WalkIn] Descriptor save error (non-fatal):', descErr.message);
         }
       } catch (e) {
         console.error('[WalkIn] Photo save error (non-fatal):', e.message, e.stack);
