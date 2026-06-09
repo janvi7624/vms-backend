@@ -1,7 +1,8 @@
 const { Visit, Visitor, User, TemiRobot } = require('../models');
 const { createOTPSession, validateOTP } = require('../services/otpService');
 const { sendOTPCode } = require('../services/emailService');
-const { VISIT_STATUS, SOCKET_EVENTS } = require('../config/constants');
+const sms = require('../services/smsService');
+const { VISIT_STATUS, SOCKET_EVENTS, OTP } = require('../config/constants');
 
 let _io;
 const setIo = (io) => { _io = io; };
@@ -23,7 +24,7 @@ const sendOTP = async (req, res, next) => {
     const visit = await Visit.findOne({
       where: { id: visitId },
       include: [
-        { model: Visitor, as: 'visitor', attributes: ['name', 'email'] },
+        { model: Visitor, as: 'visitor', attributes: ['name', 'email', 'phone'] },
         { model: User, as: 'host', attributes: ['name'] },
       ],
     });
@@ -54,8 +55,16 @@ const sendOTP = async (req, res, next) => {
       visitDate: visit.scheduled_at || visit.created_at,
     }).catch((e) => console.error('[OTP] Email error (non-fatal):', e.message));
 
+    const visitorPhone = visit.visitor?.phone;
+    await sms.sendOtpSms({
+      visitorPhone,
+      visitorName:    visit.visitor?.name || 'Visitor',
+      otp,
+      expiresMinutes: OTP.EXPIRY_MINUTES,
+    }).catch((e) => console.error('[OTP] SMS error (non-fatal):', e.message));
+
     res.json({
-      message: 'OTP sent to email',
+      message: visitorPhone ? 'OTP sent to email and SMS' : 'OTP sent to email',
       expiresAt,
       emailMasked: maskEmail(targetEmail),
     });

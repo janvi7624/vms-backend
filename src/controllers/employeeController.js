@@ -3,7 +3,8 @@ const { Visit, Visitor, User, QrCode, AuditLog } = require('../models');
 const { sendOTPCode, sendVisitDeclined } = require('../services/emailService');
 const { notifyVisitApproved, notifyVisitDeclined, emitToVisit } = require('../services/notificationService');
 const { createOTPSession } = require('../services/otpService');
-const { VISIT_STATUS } = require('../config/constants');
+const sms = require('../services/smsService');
+const { VISIT_STATUS, OTP } = require('../config/constants');
 
 // GET /employee/visits — upcoming + recent visits
 const getVisits = async (req, res, next) => {
@@ -113,7 +114,7 @@ const approveVisit = async (req, res, next) => {
 
     const visit = await Visit.findOne({
       where,
-      include: [{ model: Visitor, as: 'visitor', attributes: ['email', 'name'] }],
+      include: [{ model: Visitor, as: 'visitor', attributes: ['email', 'name', 'phone'] }],
     });
 
     if (!visit) {
@@ -125,7 +126,8 @@ const approveVisit = async (req, res, next) => {
     }
 
     const visitorEmail = visit.visitor?.email;
-    const visitorName = visit.visitor?.name;
+    const visitorName  = visit.visitor?.name;
+    const visitorPhone = visit.visitor?.phone;
 
     if (action === 'approve') {
       visit.status = VISIT_STATUS.APPROVED;
@@ -134,7 +136,7 @@ const approveVisit = async (req, res, next) => {
       if (meetingRoom) visit.meeting_room = meetingRoom;
       await visit.save();
 
-      // Generate OTP and email it to visitor
+      // Generate OTP and send via email + SMS
       let otpSent = false;
       if (visitorEmail) {
         const { otp } = await createOTPSession({
@@ -148,6 +150,8 @@ const approveVisit = async (req, res, next) => {
           otp,
           hostName: req.user.name,
         }).catch((e) => console.error('OTP email error:', e.message));
+        await sms.sendOtpSms({ visitorPhone, visitorName, otp, expiresMinutes: OTP.EXPIRY_MINUTES })
+          .catch((e) => console.error('[Approve] SMS error (non-fatal):', e.message));
         otpSent = true;
       }
 

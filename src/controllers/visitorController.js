@@ -3,8 +3,9 @@ const { Visit, Visitor, User, AuditLog, TemiRobot } = require('../models');
 const { sendVisitorInvite, sendOTPCode } = require('../services/emailService');
 const { notifyVisitRequest } = require('../services/notificationService');
 const { generateSecureToken } = require('../utils/helpers');
-const { VISIT_TYPES, VISIT_STATUS } = require('../config/constants');
+const { VISIT_TYPES, VISIT_STATUS, OTP } = require('../config/constants');
 const { createOTPSession } = require('../services/otpService');
+const sms = require('../services/smsService');
 
 // Find or create a visitor by email; updates name/company/phone on every submission
 // so changes propagate across all visits (all queries join from the visitors table).
@@ -214,8 +215,9 @@ const submitVisitorForm = async (req, res, next) => {
     if (photoUrl) visitor.photo_url = photoUrl;
     await visitor.save();
 
-    // Generate OTP and email it to visitor
+    // Generate OTP and send via email + SMS
     const visitorEmail = visit.visitor?.email;
+    const visitorPhone = visitor.phone; // already updated above if changed
     if (visitorEmail) {
       const { otp } = await createOTPSession({
         visitId: visit.id,
@@ -228,6 +230,8 @@ const submitVisitorForm = async (req, res, next) => {
         otp,
         visitDate: visit.scheduled_at,
       }).catch((e) => console.error('OTP email error:', e.message));
+      await sms.sendOtpSms({ visitorPhone, visitorName: fullName, otp, expiresMinutes: OTP.EXPIRY_MINUTES })
+        .catch((e) => console.error('[PrePlanned] SMS error (non-fatal):', e.message));
     }
 
     res.json({

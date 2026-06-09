@@ -4,6 +4,8 @@ const { Branch, User, Visit, Visitor } = require('../models');
 const { createOTPSession } = require('../services/otpService');
 const { sendOTPCode } = require('../services/emailService');
 const { emitToAdmin } = require('../services/notificationService');
+const sms = require('../services/smsService');
+const { OTP } = require('../config/constants');
 
 const COUNT = [literal('COUNT(*)'), 'count'];
 
@@ -286,7 +288,7 @@ const approveOrgVisit = async (req, res, next) => {
     const visit = await Visit.findOne({
       where: { id: req.params.id, organization_id: orgId },
       include: [
-        { model: Visitor, as: 'visitor', attributes: ['name', 'email'] },
+        { model: Visitor, as: 'visitor', attributes: ['name', 'email', 'phone'] },
         { model: User, as: 'host', attributes: ['name'] },
       ],
     });
@@ -300,9 +302,11 @@ const approveOrgVisit = async (req, res, next) => {
     visit.approved_at = new Date();
     await visit.save();
 
-    // Generate + email OTP if visitor has email
+    // Generate OTP and send via email + SMS
     let otpSent = false;
     const visitorEmail = visit.visitor?.email;
+    const visitorName  = visit.visitor?.name;
+    const visitorPhone = visit.visitor?.phone;
     if (visitorEmail) {
       const { otp } = await createOTPSession({
         visitId: visit.id,
@@ -311,11 +315,13 @@ const approveOrgVisit = async (req, res, next) => {
       });
       await sendOTPCode({
         visitorEmail,
-        visitorName: visit.visitor?.name,
+        visitorName,
         otp,
         hostName: visit.host?.name,
         visitDate: visit.scheduled_at || visit.created_at,
       }).catch((e) => console.error('[Approve] OTP email error:', e.message));
+      await sms.sendOtpSms({ visitorPhone, visitorName, otp, expiresMinutes: OTP.EXPIRY_MINUTES })
+        .catch((e) => console.error('[Approve] SMS error (non-fatal):', e.message));
       otpSent = true;
     }
 
