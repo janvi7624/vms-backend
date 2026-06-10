@@ -283,7 +283,8 @@ const getOrgPendingApprovals = async (req, res, next) => {
 const approveOrgVisit = async (req, res, next) => {
   try {
     const orgId = resolveOrgId(req);
-    const { meetingRoom } = req.body;
+    const { meetingRoom, meetingType } = req.body;
+    const isVirtual = meetingType === 'virtual';
 
     const visit = await Visit.findOne({
       where: { id: req.params.id, organization_id: orgId },
@@ -297,9 +298,18 @@ const approveOrgVisit = async (req, res, next) => {
       return res.status(404).json({ error: 'Visit not found' });
     }
 
-    visit.status = 'approved';
-    if (meetingRoom != null) visit.meeting_room = meetingRoom;
+    visit.status      = 'approved';
     visit.approved_at = new Date();
+    visit.meeting_type = isVirtual ? 'virtual' : 'in_person';
+
+    let virtualMeetingUrl = null;
+    if (isVirtual) {
+      const roomCode = req.params.id.replace(/-/g, '').slice(0, 12).toUpperCase();
+      virtualMeetingUrl = `https://meet.jit.si/NantaTechVMS-${roomCode}`;
+      visit.virtual_meeting_url = virtualMeetingUrl;
+    } else {
+      if (meetingRoom != null) visit.meeting_room = meetingRoom;
+    }
     await visit.save();
 
     // Generate OTP and send via email + SMS
@@ -325,7 +335,9 @@ const approveOrgVisit = async (req, res, next) => {
       otpSent = true;
     }
 
-    res.json({ message: 'Visit approved', otpSent });
+    emitToAdmin('visit:approved', { visitId: visit.id, meetingType: visit.meeting_type, virtualMeetingUrl });
+
+    res.json({ message: 'Visit approved', otpSent, meetingType: visit.meeting_type, virtualMeetingUrl });
   } catch (err) {
     next(err);
   }

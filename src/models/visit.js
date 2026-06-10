@@ -20,6 +20,8 @@ module.exports = (sequelize, DataTypes) =>
     completed_at: DataTypes.DATE,
     organization_id: DataTypes.UUID,
     visitor_photo: DataTypes.STRING(500),
+    meeting_type: { type: DataTypes.STRING(20), defaultValue: 'in_person' },
+    virtual_meeting_url: DataTypes.STRING(500),
   }, {
     tableName: 'visits',
     timestamps: true,

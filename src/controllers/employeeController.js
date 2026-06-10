@@ -102,7 +102,7 @@ const getPendingApprovals = async (req, res, next) => {
 // POST /employee/approve — approve or decline impromptu visit
 const approveVisit = async (req, res, next) => {
   try {
-    const { visitId, action, declineReason, meetingRoom } = req.body;
+    const { visitId, action, declineReason, meetingRoom, meetingType } = req.body;
 
     if (!visitId || !['approve', 'decline'].includes(action)) {
       return res.status(400).json({ error: 'visitId and action (approve/decline) required' });
@@ -130,10 +130,22 @@ const approveVisit = async (req, res, next) => {
     const visitorPhone = visit.visitor?.phone;
 
     if (action === 'approve') {
-      visit.status = VISIT_STATUS.APPROVED;
+      const isVirtual = meetingType === 'virtual';
+
+      visit.status      = VISIT_STATUS.APPROVED;
       visit.approved_by = req.user.id;
       visit.approved_at = new Date();
-      if (meetingRoom) visit.meeting_room = meetingRoom;
+      visit.meeting_type = isVirtual ? 'virtual' : 'in_person';
+
+      let virtualMeetingUrl = null;
+      if (isVirtual) {
+        // Generate a stable Jitsi room URL for this visit
+        const roomCode = visitId.replace(/-/g, '').slice(0, 12).toUpperCase();
+        virtualMeetingUrl = `https://meet.jit.si/NantaTechVMS-${roomCode}`;
+        visit.virtual_meeting_url = virtualMeetingUrl;
+      } else {
+        if (meetingRoom) visit.meeting_room = meetingRoom;
+      }
       await visit.save();
 
       // Generate OTP and send via email + SMS
@@ -164,18 +176,36 @@ const approveVisit = async (req, res, next) => {
         meetingRoom: visit.meeting_room || null,
       });
 
-      // Notify kiosk that visit was approved (visitor can now use OTP)
-      emitToVisit(visitId, 'visit:approved', { visitId, otpSent, meetingRoom: visit.meeting_room || null });
+      // Fetch host's Temi user ID so the robot can initiate a built-in VC call
+      const hostUser = await User.findByPk(req.user.id, { attributes: ['temi_user_id'], raw: true });
+      const hostTemiUserId = hostUser?.temi_user_id || null;
+
+      // Notify kiosk — include virtual meeting details so Temi can initiate built-in VC
+      emitToVisit(visitId, 'visit:approved', {
+        visitId,
+        otpSent,
+        meetingRoom:        visit.meeting_room || null,
+        meetingType:        visit.meeting_type,
+        virtualMeetingUrl,
+        hostTemiUserId,
+      });
 
       await AuditLog.create({
         action: 'approve_visit',
         entity_type: 'visit',
         entity_id: visit.id,
         performed_by: req.user.id,
-        metadata: { visitorName },
+        metadata: { visitorName, meetingType: visit.meeting_type },
       });
 
-      res.json({ message: 'Visit approved. OTP sent to visitor email.', otpSent });
+      res.json({
+        message: isVirtual
+          ? 'Visit approved as virtual meeting. OTP sent to visitor.'
+          : 'Visit approved. OTP sent to visitor email.',
+        otpSent,
+        meetingType: visit.meeting_type,
+        virtualMeetingUrl,
+      });
     } else {
       visit.status = VISIT_STATUS.DECLINED;
       visit.declined_reason = declineReason;
@@ -259,4 +289,32 @@ const searchEmployeesPublic = async (req, res, next) => {
   }
 };
 
-module.exports = { getVisits, getPendingApprovals, approveVisit, getNotifications, markNotificationsRead, searchEmployeesPublic };
+// GET /employee/profile — returns current user's profile including temi_user_id
+const getProfile = async (req, res, next) => {
+  try {
+    const user = await User.findByPk(req.user.id, {
+      attributes: ['id', 'name', 'email', 'phone', 'department', 'desk_location', 'temi_user_id'],
+    });
+    if (!user) return res.status(404).json({ error: 'User not found' });
+    res.json(user);
+  } catch (err) {
+    next(err);
+  }
+};
+
+// PUT /employee/profile — update temi_user_id (and other safe fields)
+const updateProfile = async (req, res, next) => {
+  try {
+    const { temi_user_id, phone, desk_location } = req.body;
+    const allowed = {};
+    if (temi_user_id  !== undefined) allowed.temi_user_id  = temi_user_id  || null;
+    if (phone         !== undefined) allowed.phone         = phone;
+    if (desk_location !== undefined) allowed.desk_location = desk_location;
+    await User.update(allowed, { where: { id: req.user.id } });
+    res.json({ message: 'Profile updated' });
+  } catch (err) {
+    next(err);
+  }
+};
+
+module.exports = { getVisits, getPendingApprovals, approveVisit, getNotifications, markNotificationsRead, searchEmployeesPublic, getProfile, updateProfile };

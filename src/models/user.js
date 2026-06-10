@@ -13,6 +13,7 @@ module.exports = (sequelize, DataTypes) =>
     organization_id: DataTypes.UUID,
     branch_id: DataTypes.UUID,
     fcm_token: DataTypes.TEXT,
+    temi_user_id: DataTypes.STRING(255),
   }, {
     tableName: 'users',
     timestamps: true,
