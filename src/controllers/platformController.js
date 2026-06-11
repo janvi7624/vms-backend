@@ -9,7 +9,7 @@ const STAFF_ROLES  = ['admin', 'sub_admin', 'employee'];
 
 const listOrganizations = async (req, res, next) => {
   try {
-    const { search, page = 1, limit = 20 } = req.query;
+    const { search, page = 1, limit = 20, status } = req.query;
     const offset = (page - 1) * limit;
 
     const where = {};
@@ -19,6 +19,7 @@ const listOrganizations = async (req, res, next) => {
         { slug: { [Op.iLike]: `%${search}%` } },
       ];
     }
+    if (status) where.status = status;
 
     const total = await Organization.count({ where });
     const organizations = await Organization.findAll({
@@ -174,6 +175,80 @@ const deleteOrganization = async (req, res, next) => {
   try {
     await Organization.update({ is_active: false }, { where: { id: req.params.id } });
     res.json({ message: 'Organization deactivated' });
+  } catch (err) {
+    next(err);
+  }
+};
+
+const approveOrganization = async (req, res, next) => {
+  try {
+    const org = await Organization.findByPk(req.params.id);
+    if (!org) return res.status(404).json({ error: 'Organization not found' });
+
+    await org.update({
+      status: 'active',
+      is_active: true,
+      verified_by: req.user.id,
+      verified_at: new Date(),
+      rejection_reason: null,
+    });
+
+    // Activate the org's admin user(s)
+    await User.update(
+      { is_active: true },
+      { where: { organization_id: org.id, role: 'admin' } },
+    );
+
+    // Notify org admin by email
+    const orgAdmin = await User.findOne({
+      where: { organization_id: org.id, role: 'admin' },
+      attributes: ['email', 'name'],
+    });
+    if (orgAdmin?.email) {
+      const { sendOrgApprovalEmail } = require('../services/emailService');
+      sendOrgApprovalEmail({
+        adminEmail: orgAdmin.email,
+        adminName: orgAdmin.name,
+        orgName: org.name,
+      }).catch((e) => console.error('[ApproveOrg] Email error:', e.message));
+    }
+
+    res.json({ message: 'Organization approved', org: org.toJSON() });
+  } catch (err) {
+    next(err);
+  }
+};
+
+const rejectOrganization = async (req, res, next) => {
+  try {
+    const { reason } = req.body;
+    const org = await Organization.findByPk(req.params.id);
+    if (!org) return res.status(404).json({ error: 'Organization not found' });
+
+    await org.update({
+      status: 'rejected',
+      is_active: false,
+      verified_by: req.user.id,
+      verified_at: new Date(),
+      rejection_reason: reason || null,
+    });
+
+    // Notify org admin by email
+    const orgAdmin = await User.findOne({
+      where: { organization_id: org.id, role: 'admin' },
+      attributes: ['email', 'name'],
+    });
+    if (orgAdmin?.email) {
+      const { sendOrgRejectionEmail } = require('../services/emailService');
+      sendOrgRejectionEmail({
+        adminEmail: orgAdmin.email,
+        adminName: orgAdmin.name,
+        orgName: org.name,
+        reason: reason || '',
+      }).catch((e) => console.error('[RejectOrg] Email error:', e.message));
+    }
+
+    res.json({ message: 'Organization rejected', org: org.toJSON() });
   } catch (err) {
     next(err);
   }
@@ -478,6 +553,7 @@ const deleteRobot = async (req, res, next) => {
 
 module.exports = {
   listOrganizations, getOrganization, createOrganization, updateOrganization, deleteOrganization,
+  approveOrganization, rejectOrganization,
   getPlatformAnalytics, getPlatformBilling, listAllRobots, listAllLocations,
   listAllUsers, createPlatformUser, updatePlatformUser, deletePlatformUser,
   listAllVisits, updatePlatformVisit, deletePlatformVisit,

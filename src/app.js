@@ -22,12 +22,14 @@ const platformRoutes = require('./routes/platform');
 const organizationRoutes = require('./routes/organization');
 const clientRoutes = require('./routes/client');
 const receptionistRoutes = require('./routes/receptionist');
+const publicRoutes = require('./routes/public');
 const errorHandler = require('./middleware/errorHandler');
 const { initializeSocket } = require('./services/notificationService');
 const { setIo } = require('./controllers/temiController');
 const { setIo: setQrIo } = require('./controllers/qrController');
 const { setIo: setOtpIo } = require('./controllers/otpController');
 const { setAdminIo } = require('./controllers/adminController');
+const { setBookingIo } = require('./controllers/bookingController');
 
 const app = express();
 const httpServer = createServer(app);
@@ -92,6 +94,7 @@ setIo(io);
 setQrIo(io);
 setOtpIo(io);
 setAdminIo(io);
+setBookingIo(io);
 
 const corsOptions = {
   origin: (origin, cb) => cb(null, isAllowedOrigin(origin)),
@@ -134,6 +137,7 @@ app.use('/api/platform', platformRoutes);
 app.use('/api/org', organizationRoutes);
 app.use('/api/client', clientRoutes);
 app.use('/api/receptionist', receptionistRoutes);
+app.use('/api/public', publicRoutes);
 
 app.get('/health', (req, res) =>
   res.json({ status: 'ok', timestamp: new Date().toISOString(), service: 'Temi VMS API' })

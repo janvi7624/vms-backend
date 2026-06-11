@@ -22,6 +22,10 @@ module.exports = (sequelize, DataTypes) =>
     visitor_photo: DataTypes.STRING(500),
     meeting_type: { type: DataTypes.STRING(20), defaultValue: 'in_person' },
     virtual_meeting_url: DataTypes.STRING(500),
+    // Self-service booking fields
+    sub_admin_approved_by: DataTypes.UUID,
+    sub_admin_approved_at: DataTypes.DATE,
+    booking_source: { type: DataTypes.STRING(30), defaultValue: 'internal' }, // 'internal' | 'self_service'
   }, {
     tableName: 'visits',
     timestamps: true,

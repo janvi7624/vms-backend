@@ -139,4 +139,104 @@ const sendOTPCode = async ({ visitorEmail, visitorName, otp, expiresMinutes = 10
   });
 };
 
-module.exports = { sendVisitorInvite, sendQRCode, sendVisitDeclined, sendApprovalNotification, sendOTPCode };
+// ── Organization registration emails ─────────────────────────────────────────
+
+const sendOrgRegistrationConfirmation = async ({ adminName, adminEmail, orgName }) => {
+  await sendEmail({
+    to: adminEmail,
+    subject: `Organization Registration Received — ${orgName}`,
+    html: `
+      <div style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto;background:#f9f9f9;padding:20px;border-radius:8px">
+        <div style="background:#1a1a2e;padding:24px;border-radius:8px 8px 0 0;text-align:center">
+          <h1 style="color:#fff;margin:0;font-size:22px">VMS Platform</h1>
+        </div>
+        <div style="background:#fff;padding:30px;border-radius:0 0 8px 8px">
+          <p>Dear <strong>${adminName}</strong>,</p>
+          <p>Thank you for registering <strong>${orgName}</strong> on the VMS platform.</p>
+          <p>Your registration has been received and is currently <strong>pending verification</strong> by our team. We will review your details and notify you once approved.</p>
+          <p style="color:#555;font-size:13px">This process typically takes 1–2 business days.</p>
+          <p style="margin-top:24px;color:#666;font-size:12px">If you have any questions, please contact support.</p>
+        </div>
+      </div>
+    `,
+  });
+};
+
+const sendOrgRegistrationToAdmin = async ({ superAdminEmail, superAdminName, orgName, orgEmail, adminName, adminEmail, orgId }) => {
+  const dashboardUrl = `${process.env.WEB_URL || 'http://localhost:5173'}/platform`;
+  await sendEmail({
+    to: superAdminEmail,
+    subject: `New Organization Registration — ${orgName}`,
+    html: `
+      <div style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto;background:#f9f9f9;padding:20px;border-radius:8px">
+        <div style="background:#1a1a2e;padding:24px;border-radius:8px 8px 0 0;text-align:center">
+          <h1 style="color:#fff;margin:0;font-size:22px">New Organization Registration</h1>
+        </div>
+        <div style="background:#fff;padding:30px;border-radius:0 0 8px 8px">
+          <p>Dear <strong>${superAdminName}</strong>,</p>
+          <p>A new organization has registered and is awaiting your verification.</p>
+          <table style="width:100%;border-collapse:collapse;margin:16px 0">
+            <tr><td style="padding:8px;background:#f5f5f5;font-weight:bold;width:40%">Organization</td><td style="padding:8px">${orgName}</td></tr>
+            <tr><td style="padding:8px;background:#f5f5f5;font-weight:bold">Org Email</td><td style="padding:8px">${orgEmail}</td></tr>
+            <tr><td style="padding:8px;background:#f5f5f5;font-weight:bold">Admin Name</td><td style="padding:8px">${adminName}</td></tr>
+            <tr><td style="padding:8px;background:#f5f5f5;font-weight:bold">Admin Email</td><td style="padding:8px">${adminEmail}</td></tr>
+          </table>
+          <div style="text-align:center;margin:24px 0">
+            <a href="${dashboardUrl}" style="background:#E65C3A;color:#fff;padding:14px 28px;border-radius:6px;text-decoration:none;font-weight:bold">
+              Review in Dashboard
+            </a>
+          </div>
+        </div>
+      </div>
+    `,
+  });
+};
+
+const sendOrgApprovalEmail = async ({ adminEmail, adminName, orgName }) => {
+  await sendEmail({
+    to: adminEmail,
+    subject: `Your Organization Has Been Approved — ${orgName}`,
+    html: `
+      <div style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto;background:#f9f9f9;padding:20px;border-radius:8px">
+        <div style="background:#16a34a;padding:24px;border-radius:8px 8px 0 0;text-align:center">
+          <h1 style="color:#fff;margin:0;font-size:22px">Organization Approved!</h1>
+        </div>
+        <div style="background:#fff;padding:30px;border-radius:0 0 8px 8px">
+          <p>Dear <strong>${adminName}</strong>,</p>
+          <p>Great news! <strong>${orgName}</strong> has been approved on the VMS platform. Your account is now active.</p>
+          <p>You can now log in and start managing your organization.</p>
+          <div style="text-align:center;margin:24px 0">
+            <a href="${process.env.WEB_URL || 'http://localhost:5173'}/login" style="background:#16a34a;color:#fff;padding:14px 28px;border-radius:6px;text-decoration:none;font-weight:bold">
+              Log In Now
+            </a>
+          </div>
+        </div>
+      </div>
+    `,
+  });
+};
+
+const sendOrgRejectionEmail = async ({ adminEmail, adminName, orgName, reason }) => {
+  await sendEmail({
+    to: adminEmail,
+    subject: `Organization Registration Update — ${orgName}`,
+    html: `
+      <div style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto;background:#f9f9f9;padding:20px;border-radius:8px">
+        <div style="background:#dc2626;padding:24px;border-radius:8px 8px 0 0;text-align:center">
+          <h1 style="color:#fff;margin:0;font-size:22px">Registration Not Approved</h1>
+        </div>
+        <div style="background:#fff;padding:30px;border-radius:0 0 8px 8px">
+          <p>Dear <strong>${adminName}</strong>,</p>
+          <p>Unfortunately, the registration for <strong>${orgName}</strong> has not been approved at this time.</p>
+          ${reason ? `<p><strong>Reason:</strong> ${reason}</p>` : ''}
+          <p style="color:#555;font-size:13px">Please contact support if you believe this is an error or would like to reapply.</p>
+        </div>
+      </div>
+    `,
+  });
+};
+
+module.exports = {
+  sendVisitorInvite, sendQRCode, sendVisitDeclined, sendApprovalNotification, sendOTPCode,
+  sendOrgRegistrationConfirmation, sendOrgRegistrationToAdmin, sendOrgApprovalEmail, sendOrgRejectionEmail,
+};

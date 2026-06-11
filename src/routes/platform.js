@@ -3,6 +3,7 @@ const { authenticate } = require('../middleware/auth');
 const { requirePlatformAdmin } = require('../middleware/roleCheck');
 const {
   listOrganizations, getOrganization, createOrganization, updateOrganization, deleteOrganization,
+  approveOrganization, rejectOrganization,
   getPlatformAnalytics, getPlatformBilling, listAllRobots, listAllLocations,
   listAllUsers, createPlatformUser, updatePlatformUser, deletePlatformUser,
   listAllVisits, updatePlatformVisit, deletePlatformVisit,
@@ -17,11 +18,13 @@ router.get('/analytics',            getPlatformAnalytics);
 router.get('/billing',              getPlatformBilling);
 
 // Organizations
-router.get('/organizations',        listOrganizations);
-router.post('/organizations',       createOrganization);
-router.get('/organizations/:id',    getOrganization);
-router.put('/organizations/:id',    updateOrganization);
-router.delete('/organizations/:id', deleteOrganization);
+router.get('/organizations',                   listOrganizations);
+router.post('/organizations',                  createOrganization);
+router.get('/organizations/:id',               getOrganization);
+router.put('/organizations/:id',               updateOrganization);
+router.delete('/organizations/:id',            deleteOrganization);
+router.put('/organizations/:id/approve',       approveOrganization);
+router.put('/organizations/:id/reject',        rejectOrganization);
 
 // Users (all orgs)
 router.get('/users',        listAllUsers);

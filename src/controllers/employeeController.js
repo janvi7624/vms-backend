@@ -61,8 +61,15 @@ const getPendingApprovals = async (req, res, next) => {
   try {
     const isAdmin = ['super_admin', 'admin', 'sub_admin'].includes(req.user.role);
 
-    const where = { status: 'pending', visit_type: 'impromptu' };
-    if (!isAdmin) where.host_employee_id = req.user.id;
+    const pendingStatuses = isAdmin
+      ? ['pending', 'pending_sub_admin', 'pending_employee']
+      : ['pending', 'pending_employee'];
+
+    const where = {
+      status:     { [Op.in]: pendingStatuses },
+      visit_type: 'impromptu',
+      ...(isAdmin ? { organization_id: req.user.organization_id } : { host_employee_id: req.user.id }),
+    };
 
     const attributesInclude = [
       [col('visitor.name'),      'visitor_name'],
@@ -121,8 +128,33 @@ const approveVisit = async (req, res, next) => {
       return res.status(404).json({ error: 'Visit not found or unauthorized' });
     }
 
-    if (visit.status !== VISIT_STATUS.PENDING) {
+    const allowedStatuses = [
+      VISIT_STATUS.PENDING,
+      VISIT_STATUS.PENDING_SUB_ADMIN,
+      VISIT_STATUS.PENDING_EMPLOYEE,
+    ];
+    if (!allowedStatuses.includes(visit.status)) {
       return res.status(409).json({ error: `Visit is already ${visit.status}` });
+    }
+
+    // ── Sub-admin approval of self-service booking (stage 1) ─────────────────
+    // When a sub-admin approves a pending_sub_admin visit, move it to
+    // pending_employee_selection so the visitor can pick an employee.
+    if (visit.status === VISIT_STATUS.PENDING_SUB_ADMIN) {
+      if (!['super_admin', 'admin', 'sub_admin'].includes(req.user.role)) {
+        return res.status(403).json({ error: 'Only admins or sub-admins can action this visit' });
+      }
+      if (action === 'approve') {
+        await visit.update({
+          status:                  VISIT_STATUS.PENDING_EMPLOYEE_SELECTION,
+          sub_admin_approved_by:   req.user.id,
+          sub_admin_approved_at:   new Date(),
+        });
+        return res.json({ message: 'Approved. Visitor will now select an employee.' });
+      } else {
+        await visit.update({ status: VISIT_STATUS.DECLINED, declined_reason: declineReason || null });
+        return res.json({ message: 'Visit request declined.' });
+      }
     }
 
     const visitorEmail = visit.visitor?.email;

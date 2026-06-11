@@ -12,7 +12,13 @@ module.exports = {
     IMPROMPTU:   'impromptu',
   },
   VISIT_STATUS: {
-    PENDING:    'pending',
+    // Legacy impromptu/walk-in status
+    PENDING:                    'pending',
+    // Self-service booking flow (Option 2 on landing page)
+    PENDING_SUB_ADMIN:          'pending_sub_admin',          // awaiting any sub-admin to approve
+    PENDING_EMPLOYEE_SELECTION: 'pending_employee_selection', // sub-admin approved; visitor must pick employee
+    PENDING_EMPLOYEE:           'pending_employee',           // employee selected; awaiting employee approval
+    // Terminal statuses
     APPROVED:   'approved',
     DECLINED:   'declined',
     CHECKED_IN: 'checked_in',
