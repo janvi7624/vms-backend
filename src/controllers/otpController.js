@@ -290,4 +290,30 @@ const maskEmail = (email) => {
   return `${visible}${'*'.repeat(Math.max(0, local.length - 2))}@${domain}`;
 };
 
-module.exports = { sendOTP, verifyOTP, requestWalkIn, setIo };
+/**
+ * GET /api/otp/visit-status/:visitId
+ * No auth required — kiosk polls this to get visit approval/decline status.
+ */
+const getVisitStatus = async (req, res, next) => {
+  try {
+    const { visitId } = req.params;
+    const visit = await Visit.findByPk(visitId, {
+      attributes: ['id', 'status', 'meeting_type', 'virtual_meeting_url', 'declined_reason', 'meeting_room'],
+      include: [{ model: User, as: 'host', attributes: ['temi_user_id'] }],
+    });
+    if (!visit) return res.status(404).json({ error: 'Visit not found' });
+    res.json({
+      visitId:          visit.id,
+      status:           visit.status,
+      meetingType:      visit.meeting_type,
+      virtualMeetingUrl: visit.virtual_meeting_url || null,
+      hostTemiUserId:   visit.host?.temi_user_id || null,
+      meetingRoom:      visit.meeting_room || null,
+      declinedReason:   visit.declined_reason || null,
+    });
+  } catch (err) {
+    next(err);
+  }
+};
+
+module.exports = { sendOTP, verifyOTP, requestWalkIn, getVisitStatus, setIo };
