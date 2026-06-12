@@ -18,7 +18,7 @@ const getEmployees = async (req, res, next) => {
 
     const and = [
       { role: { [Op.ne]: 'super_admin' } },
-      ...(req.user.organization_id ? [{ organization_id: req.user.organization_id }] : []),
+      { organization_id: req.user.organization_id },
     ];
     if (search) {
       and.push({ [Op.or]: [
@@ -192,8 +192,7 @@ const getAllVisits = async (req, res, next) => {
     const { status, type, employeeId, visitorId, from, to, page = 1, limit = 50 } = req.query;
     const offset = (page - 1) * limit;
 
-    const where = {};
-    if (req.user.organization_id) where.organization_id = req.user.organization_id;
+    const where = { organization_id: req.user.organization_id };
     if (status)     where.status           = status;
     if (type)       where.visit_type       = type;
     if (employeeId) where.host_employee_id = employeeId;
@@ -242,7 +241,11 @@ const getAnalytics = async (req, res, next) => {
     const { from, to } = req.query;
     const fromDate = from || new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
     const toDate = to || new Date().toISOString();
-    const between = { created_at: { [Op.between]: [fromDate, toDate] } };
+    const orgId = req.user.organization_id;
+    const between = {
+      created_at:      { [Op.between]: [fromDate, toDate] },
+      organization_id: orgId,
+    };
 
     const [totalVisits, byStatus, byType, peakHours, topEmployees, dailyTrend] = await Promise.all([
       Visit.count({ where: between }),
@@ -250,7 +253,7 @@ const getAnalytics = async (req, res, next) => {
       Visit.findAll({ attributes: ['visit_type', COUNT], where: between, group: ['visit_type'], raw: true }),
       Visit.findAll({
         attributes: [[literal('EXTRACT(HOUR FROM "checked_in_at")'), 'hour'], [literal('COUNT(*)'), 'count']],
-        where: { checked_in_at: { [Op.ne]: null, [Op.between]: [fromDate, toDate] } },
+        where: { checked_in_at: { [Op.ne]: null, [Op.between]: [fromDate, toDate] }, organization_id: orgId },
         group: [literal('EXTRACT(HOUR FROM "checked_in_at")')],
         order: [literal('EXTRACT(HOUR FROM "checked_in_at")')],
         raw: true,
@@ -293,9 +296,15 @@ const getAuditLogs = async (req, res, next) => {
     const { page = 1, limit = 50 } = req.query;
     const offset = (page - 1) * limit;
 
+    const orgId = req.user.organization_id;
+    // Filter audit logs by the performer's organization so each org only sees its own history
     const logs = await AuditLog.findAll({
       attributes: { include: [[col('performer.name'), 'performed_by_name']] },
-      include: [{ model: User, as: 'performer', attributes: [], required: false }],
+      include: [{
+        model: User, as: 'performer', attributes: [],
+        required: true,
+        where: { organization_id: orgId },
+      }],
       order: [[literal('"AuditLog"."created_at"'), 'DESC']],
       limit: parseInt(limit),
       offset: parseInt(offset),
@@ -303,7 +312,9 @@ const getAuditLogs = async (req, res, next) => {
       nest: false,
       subQuery: false,
     });
-    const total = await AuditLog.count();
+    const total = await AuditLog.count({
+      include: [{ model: User, as: 'performer', required: true, where: { organization_id: orgId } }],
+    });
 
     res.json({ logs, total });
   } catch (err) {
@@ -315,6 +326,7 @@ const getAuditLogs = async (req, res, next) => {
 const getTemiRobots = async (req, res, next) => {
   try {
     const robots = await TemiRobot.findAll({
+      where: { organization_id: req.user.organization_id },
       attributes: { include: [[col('location.name'), 'location_name']] },
       include: [{ model: Location, as: 'location', attributes: [], required: false }],
       order: [[literal('"TemiRobot"."name"'), 'ASC']],
@@ -333,12 +345,14 @@ const getRobotStatus = async (req, res, next) => {
     const todayStart = new Date();
     todayStart.setHours(0, 0, 0, 0);
 
+    const orgId = req.user.organization_id;
     const robots = await TemiRobot.findAll({
+      where: { organization_id: orgId },
       attributes: {
         include: [
           [col('location.name'), 'location_name'],
           [
-            literal(`(SELECT COUNT(*) FROM visits v WHERE v.robot_id = "TemiRobot"."id" AND v.created_at >= '${todayStart.toISOString()}')`),
+            literal(`(SELECT COUNT(*) FROM visits v WHERE v.robot_id = "TemiRobot"."id" AND v.organization_id = '${orgId}' AND v.created_at >= '${todayStart.toISOString()}')`),
             'visits_today',
           ],
         ],
@@ -378,11 +392,12 @@ const getLocationHeatmap = async (req, res, next) => {
       FROM visits v
       LEFT JOIN locations l ON v.location_id = l.id
       WHERE v.created_at BETWEEN :from AND :to
+        AND v.organization_id = :orgId
       GROUP BY COALESCE(NULLIF(v.meeting_room, ''), l.name, 'General / No Room')
       ORDER BY visit_count DESC
       LIMIT 12
     `, {
-      replacements: { from: fromDate, to: toDate },
+      replacements: { from: fromDate, to: toDate, orgId: req.user.organization_id },
       type: sequelize.QueryTypes.SELECT,
     });
 
@@ -420,11 +435,12 @@ const getStaffActivity = async (req, res, next) => {
       JOIN users u ON v.approved_by = u.id
       WHERE v.created_at BETWEEN :from AND :to
         AND v.approved_by IS NOT NULL
+        AND v.organization_id = :orgId
       GROUP BY u.id, u.name, u.department
       ORDER BY approved DESC
       LIMIT 10
     `, {
-      replacements: { from: fromDate, to: toDate },
+      replacements: { from: fromDate, to: toDate, orgId: req.user.organization_id },
       type: sequelize.QueryTypes.SELECT,
     });
 
@@ -441,13 +457,15 @@ const getVisitFunnel = async (req, res, next) => {
     const fromDate = from || new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
     const toDate = to || new Date().toISOString();
 
+    const orgId = req.user.organization_id;
     const [statusCounts, durationStats, approvalTime] = await Promise.all([
       sequelize.query(`
         SELECT status, COUNT(*)::int AS count
         FROM visits
         WHERE created_at BETWEEN :from AND :to
+          AND organization_id = :orgId
         GROUP BY status
-      `, { replacements: { from: fromDate, to: toDate }, type: sequelize.QueryTypes.SELECT }),
+      `, { replacements: { from: fromDate, to: toDate, orgId }, type: sequelize.QueryTypes.SELECT }),
 
       sequelize.query(`
         SELECT
@@ -461,7 +479,8 @@ const getVisitFunnel = async (req, res, next) => {
         WHERE checked_in_at IS NOT NULL
           AND checked_out_at IS NOT NULL
           AND created_at BETWEEN :from AND :to
-      `, { replacements: { from: fromDate, to: toDate }, type: sequelize.QueryTypes.SELECT }),
+          AND organization_id = :orgId
+      `, { replacements: { from: fromDate, to: toDate, orgId }, type: sequelize.QueryTypes.SELECT }),
 
       sequelize.query(`
         SELECT
@@ -472,7 +491,8 @@ const getVisitFunnel = async (req, res, next) => {
         FROM visits
         WHERE approved_at IS NOT NULL
           AND created_at BETWEEN :from AND :to
-      `, { replacements: { from: fromDate, to: toDate }, type: sequelize.QueryTypes.SELECT }),
+          AND organization_id = :orgId
+      `, { replacements: { from: fromDate, to: toDate, orgId }, type: sequelize.QueryTypes.SELECT }),
     ]);
 
     // Build ordered funnel
