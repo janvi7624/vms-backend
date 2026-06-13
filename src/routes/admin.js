@@ -6,6 +6,7 @@ const {
   getAllVisits, getAnalytics, getAuditLogs, getTemiRobots,
   getRobotStatus, getLocationHeatmap, getStaffActivity, getVisitFunnel,
   getFloorQueue, assignRobot, sendRobotCommand,
+  linkTemiRobot, unlinkTemiRobot,
 } = require('../controllers/adminController');
 const { authenticate } = require('../middleware/auth');
 const { requireAdmin } = require('../middleware/roleCheck');
@@ -27,6 +28,10 @@ router.get('/robot-status',     getRobotStatus);
 router.get('/location-heatmap', getLocationHeatmap);
 router.get('/staff-activity',   getStaffActivity);
 router.get('/visit-funnel',     getVisitFunnel);
+
+// Temi robot linking
+router.post('/temi-robots/link',                  linkTemiRobot);
+router.delete('/temi-robots/:serial/unlink',      unlinkTemiRobot);
 
 // Sub Admin / Floor Manager
 router.get('/floor-queue',                getFloorQueue);

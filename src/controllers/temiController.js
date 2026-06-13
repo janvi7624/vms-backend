@@ -1,5 +1,5 @@
 const { col } = require('sequelize');
-const { TemiRobot, Visit, AuditLog, Location, ServiceRequest, User } = require('../models');
+const { TemiRobot, Visit, AuditLog, Location, Organization, ServiceRequest, User } = require('../models');
 const { notifyServiceRequest, notifyServiceFollowUp, notifyVisitCompleted, emitAnalyticsUpdate } = require('../services/notificationService');
 const { SOCKET_EVENTS } = require('../config/constants');
 
@@ -36,11 +36,16 @@ const getConfig = async (req, res, next) => {
       where: { serial_number: req.params.serial },
       attributes: {
         include: [
-          [col('location.name'), 'location_name'],
-          [col('location.address'), 'location_address'],
+          [col('location.name'),        'location_name'],
+          [col('location.address'),     'location_address'],
+          [col('organization.name'),    'organization_name'],
+          [col('organization.logo_url'),'organization_logo'],
         ],
       },
-      include: [{ model: Location, as: 'location', attributes: [], required: false }],
+      include: [
+        { model: Location,     as: 'location',     attributes: [], required: false },
+        { model: Organization, as: 'organization', attributes: [], required: false },
+      ],
       raw: true,
       nest: false,
     });

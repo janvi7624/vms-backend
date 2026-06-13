@@ -634,10 +634,76 @@ const sendRobotCommand = async (req, res, next) => {
   }
 };
 
+// POST /admin/temi-robots/link
+// Admin supplies a serial number to claim a Temi robot for their org.
+// If the robot has never sent a heartbeat it is pre-registered; if it exists it
+// is re-assigned to this organisation (useful when moving a robot between orgs).
+const linkTemiRobot = async (req, res, next) => {
+  try {
+    const { serialNumber, name } = req.body;
+    if (!serialNumber?.trim()) {
+      return res.status(400).json({ error: 'serialNumber is required' });
+    }
+
+    const serial = serialNumber.trim().toUpperCase();
+    const orgId  = req.user.organization_id;
+
+    // Fetch org name so we can return it immediately
+    const org = await Organization.findByPk(orgId, { attributes: ['name'], raw: true });
+
+    const [robot, created] = await TemiRobot.upsert(
+      {
+        serial_number:   serial,
+        organization_id: orgId,
+        name:            name?.trim() || 'Temi',
+      },
+      { returning: true }
+    );
+
+    await AuditLog.create({
+      action:       created ? 'temi_robot_registered' : 'temi_robot_linked',
+      entity_type:  'temi_robot',
+      entity_id:    robot?.id ?? null,
+      performed_by: req.user.id,
+      metadata:     { serial, orgId },
+    });
+
+    res.json({
+      ok:      true,
+      created,
+      serial,
+      orgName: org?.name ?? null,
+      message: created
+        ? `Robot ${serial} registered and linked to your organisation.`
+        : `Robot ${serial} is now linked to your organisation.`,
+    });
+  } catch (err) {
+    next(err);
+  }
+};
+
+// DELETE /admin/temi-robots/:serial/unlink
+// Removes the org association so another admin can claim the robot.
+const unlinkTemiRobot = async (req, res, next) => {
+  try {
+    const serial = req.params.serial?.toUpperCase();
+    const robot  = await TemiRobot.findOne({
+      where: { serial_number: serial, organization_id: req.user.organization_id },
+    });
+    if (!robot) return res.status(404).json({ error: 'Robot not found in your organisation' });
+
+    await robot.update({ organization_id: null });
+    res.json({ ok: true, message: `Robot ${serial} unlinked from your organisation.` });
+  } catch (err) {
+    next(err);
+  }
+};
+
 module.exports = {
   setAdminIo,
   getEmployees, createEmployee, updateEmployee, deleteEmployee,
   getAllVisits, getAnalytics, getAuditLogs, getTemiRobots,
   getRobotStatus, getLocationHeatmap, getStaffActivity, getVisitFunnel,
   getFloorQueue, assignRobot, sendRobotCommand,
+  linkTemiRobot, unlinkTemiRobot,
 };
