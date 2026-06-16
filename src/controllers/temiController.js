@@ -299,8 +299,37 @@ const updateServiceRequest = async (req, res, next) => {
   }
 };
 
+// POST /visitor/direct-navigate — PUBLIC kiosk endpoint
+// Looks up employee's desk_location and sends temi:command navigate
+const directNavigate = async (req, res, next) => {
+  try {
+    const { employeeId } = req.body;
+    if (!employeeId) return res.status(400).json({ error: 'employeeId required' });
+
+    const employee = await User.findOne({
+      where: { id: employeeId, is_active: true },
+      attributes: ['id', 'name', 'department', 'desk_location'],
+      raw: true,
+    });
+    if (!employee) return res.status(404).json({ error: 'Employee not found' });
+    if (!employee.desk_location) return res.status(400).json({ error: 'No room mapped for this person' });
+
+    const serial = process.env.TEMI_SERIAL;
+    if (io && serial) {
+      io.to(`temi:${serial}`).emit('temi:command', {
+        type: 'navigate',
+        location: employee.desk_location,
+      });
+    }
+
+    res.json({ ok: true, location: employee.desk_location, name: employee.name });
+  } catch (err) {
+    next(err);
+  }
+};
+
 module.exports = {
   heartbeat, getConfig, getLocations, syncLocations, checkoutVisit, reportError,
   createServiceRequest, addFollowUp, getServiceRequests, updateServiceRequest,
-  setIo,
+  directNavigate, setIo,
 };

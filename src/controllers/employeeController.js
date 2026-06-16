@@ -298,19 +298,25 @@ const markNotificationsRead = async (req, res, next) => {
 };
 
 // GET /visitor/employees/search — PUBLIC, returns minimal fields for kiosk walk-in form
+// Optional ?roles=admin,sub_admin to filter by role (e.g. for Direct Visit manager list)
+const ALLOWED_ROLES = ['super_admin', 'admin', 'sub_admin', 'employee'];
 const searchEmployeesPublic = async (req, res, next) => {
   try {
-    const { q = '' } = req.query;
+    const { q = '', roles } = req.query;
+    const roleFilter = roles
+      ? roles.split(',').filter(r => ALLOWED_ROLES.includes(r))
+      : ALLOWED_ROLES;
+    if (roleFilter.length === 0) return res.json([]);
     const rows = await User.findAll({
       where: {
-        role: ['super_admin', 'admin', 'sub_admin', 'employee'],
+        role: roleFilter,
         is_active: true,
         [Op.or]: [
           { name: { [Op.iLike]: `%${q}%` } },
           { department: { [Op.iLike]: `%${q}%` } },
         ],
       },
-      attributes: ['id', 'name', 'department', 'desk_location'],
+      attributes: ['id', 'name', 'department', 'desk_location', 'role'],
       order: [['name', 'ASC']],
       limit: 100,
       raw: true,
