@@ -316,7 +316,7 @@ const searchEmployeesPublic = async (req, res, next) => {
           { department: { [Op.iLike]: `%${q}%` } },
         ],
       },
-      attributes: ['id', 'name', 'department', 'desk_location', 'role'],
+      attributes: ['id', 'name', 'department', 'desk_location', 'role', 'is_dnd'],
       order: [['name', 'ASC']],
       limit: 100,
       raw: true,
@@ -331,7 +331,7 @@ const searchEmployeesPublic = async (req, res, next) => {
 const getProfile = async (req, res, next) => {
   try {
     const user = await User.findByPk(req.user.id, {
-      attributes: ['id', 'name', 'email', 'phone', 'department', 'desk_location', 'temi_user_id'],
+      attributes: ['id', 'name', 'email', 'phone', 'department', 'desk_location', 'temi_user_id', 'is_dnd'],
     });
     if (!user) return res.status(404).json({ error: 'User not found' });
     res.json(user);
@@ -343,11 +343,12 @@ const getProfile = async (req, res, next) => {
 // PUT /employee/profile — update temi_user_id (and other safe fields)
 const updateProfile = async (req, res, next) => {
   try {
-    const { temi_user_id, phone, desk_location } = req.body;
+    const { temi_user_id, phone, desk_location, is_dnd } = req.body;
     const allowed = {};
     if (temi_user_id  !== undefined) allowed.temi_user_id  = temi_user_id  || null;
     if (phone         !== undefined) allowed.phone         = phone;
     if (desk_location !== undefined) allowed.desk_location = desk_location;
+    if (is_dnd        !== undefined) allowed.is_dnd        = Boolean(is_dnd);
     await User.update(allowed, { where: { id: req.user.id } });
     res.json({ message: 'Profile updated' });
   } catch (err) {

@@ -10,6 +10,7 @@ module.exports = (sequelize, DataTypes) =>
     desk_location: DataTypes.STRING(255),
     location_id: DataTypes.UUID,
     is_active: { type: DataTypes.BOOLEAN, defaultValue: true },
+    is_dnd:    { type: DataTypes.BOOLEAN, defaultValue: false },
     organization_id: DataTypes.UUID,
     branch_id: DataTypes.UUID,
     fcm_token: DataTypes.TEXT,
