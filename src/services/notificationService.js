@@ -115,6 +115,10 @@ const emitToOrg = (organizationId, event, data) => {
   if (io && organizationId) io.to(`org:${organizationId}`).emit(event, data);
 };
 
+const emitToTemi = (serial, event, data) => {
+  if (io && serial) io.to(`temi:${serial}`).emit(event, data);
+};
+
 // Broadcast an analytics refresh signal — frontends re-fetch stats on receipt
 const emitAnalyticsUpdate = (organizationId) => {
   if (!io) return;
@@ -375,5 +379,6 @@ module.exports = {
   emitToAdmin,
   emitToUser,
   emitToOrg,
+  emitToTemi,
   emitAnalyticsUpdate,
 };

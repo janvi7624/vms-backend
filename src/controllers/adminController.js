@@ -2,7 +2,7 @@ const bcrypt = require('bcryptjs');
 const { Op, col, fn, literal } = require('sequelize');
 const { User, Visit, Visitor, AuditLog, TemiRobot, Location, Organization, sequelize } = require('../models');
 const { canManage } = require('../middleware/roleCheck');
-const { emitAnalyticsUpdate } = require('../services/notificationService');
+const { emitAnalyticsUpdate, emitToTemi, emitToOrg } = require('../services/notificationService');
 const { SOCKET_EVENTS } = require('../config/constants');
 
 let adminIo;
@@ -325,8 +325,14 @@ const getAuditLogs = async (req, res, next) => {
 // GET /admin/temi-robots
 const getTemiRobots = async (req, res, next) => {
   try {
+    const orgId  = req.user.organization_id;
     const robots = await TemiRobot.findAll({
-      where: { organization_id: req.user.organization_id },
+      where: {
+        [Op.or]: [
+          { organization_id: orgId },
+          { pending_org_id: orgId, link_status: 'pending' },
+        ],
+      },
       attributes: { include: [[col('location.name'), 'location_name']] },
       include: [{ model: Location, as: 'location', attributes: [], required: false }],
       order: [[literal('"TemiRobot"."name"'), 'ASC']],
@@ -648,24 +654,51 @@ const linkTemiRobot = async (req, res, next) => {
     const serial = serialNumber.trim().toUpperCase();
     const orgId  = req.user.organization_id;
 
-    // Fetch org name so we can return it immediately
-    const org = await Organization.findByPk(orgId, { attributes: ['name'], raw: true });
+    // Check for conflicts with other orgs
+    const existing = await TemiRobot.findOne({
+      where: { serial_number: serial },
+      attributes: ['id', 'name', 'organization_id', 'pending_org_id', 'link_status'],
+      raw: true,
+    });
+
+    if (existing) {
+      if (existing.link_status === 'linked') {
+        if (existing.organization_id === orgId) {
+          return res.json({ ok: true, created: false, serial, message: `Robot ${serial} is already linked to your organisation.` });
+        }
+        return res.status(409).json({ error: 'This robot is already linked to another organisation.' });
+      }
+      if (existing.link_status === 'pending' && existing.pending_org_id && existing.pending_org_id !== orgId) {
+        return res.status(409).json({ error: 'This robot already has a pending link request from another organisation.' });
+      }
+    }
+
+    const org = await Organization.findByPk(orgId, { attributes: ['name', 'logo_url'], raw: true });
 
     const [robot, created] = await TemiRobot.upsert(
       {
-        serial_number:   serial,
-        organization_id: orgId,
-        name:            name?.trim() || 'Temi',
+        serial_number:  serial,
+        pending_org_id: orgId,
+        link_status:    'pending',
+        name:           name?.trim() || existing?.name || 'Temi',
       },
       { returning: true }
     );
 
     await AuditLog.create({
-      action:       created ? 'temi_robot_registered' : 'temi_robot_linked',
+      action:       'temi_link_pending',
       entity_type:  'temi_robot',
       entity_id:    robot?.id ?? null,
       performed_by: req.user.id,
       metadata:     { serial, orgId },
+    });
+
+    // Notify the Temi device so UnlinkedScreen can react immediately
+    emitToTemi(serial, 'temi:link-pending', {
+      serial,
+      orgId,
+      orgName: org?.name,
+      orgLogo: org?.logo_url,
     });
 
     res.json({
@@ -673,10 +706,42 @@ const linkTemiRobot = async (req, res, next) => {
       created,
       serial,
       orgName: org?.name ?? null,
-      message: created
-        ? `Robot ${serial} registered and linked to your organisation.`
-        : `Robot ${serial} is now linked to your organisation.`,
+      message: `Robot ${serial} is awaiting verification on the Walkie device.`,
     });
+  } catch (err) {
+    next(err);
+  }
+};
+
+const approveTemiLink = async (req, res, next) => {
+  try {
+    const serial = req.params.serial?.toUpperCase();
+    const orgId  = req.user.organization_id;
+
+    const robot = await TemiRobot.findOne({
+      where: { serial_number: serial, pending_org_id: orgId, link_status: 'pending' },
+    });
+    if (!robot) return res.status(404).json({ error: 'No pending robot found for this serial in your organisation.' });
+
+    const org = await Organization.findByPk(orgId, { attributes: ['name', 'logo_url'], raw: true });
+
+    await robot.update({ organization_id: orgId, pending_org_id: null, link_status: 'linked' });
+
+    emitToTemi(serial, 'temi:link-approved', {
+      organizationId:   orgId,
+      organizationName: org?.name,
+      organizationLogo: org?.logo_url,
+    });
+
+    await AuditLog.create({
+      action:       'temi_link_approved',
+      entity_type:  'temi_robot',
+      entity_id:    robot.id,
+      performed_by: req.user.id,
+      metadata:     { serial, orgId },
+    });
+
+    res.json({ ok: true, message: `Walkie ${serial} is now linked to your organisation.` });
   } catch (err) {
     next(err);
   }
@@ -687,12 +752,16 @@ const linkTemiRobot = async (req, res, next) => {
 const unlinkTemiRobot = async (req, res, next) => {
   try {
     const serial = req.params.serial?.toUpperCase();
+    const orgId  = req.user.organization_id;
     const robot  = await TemiRobot.findOne({
-      where: { serial_number: serial, organization_id: req.user.organization_id },
+      where: {
+        serial_number: serial,
+        [Op.or]: [{ organization_id: orgId }, { pending_org_id: orgId }],
+      },
     });
     if (!robot) return res.status(404).json({ error: 'Robot not found in your organisation' });
 
-    await robot.update({ organization_id: null });
+    await robot.update({ organization_id: null, pending_org_id: null, link_status: 'unlinked' });
     res.json({ ok: true, message: `Robot ${serial} unlinked from your organisation.` });
   } catch (err) {
     next(err);
@@ -705,5 +774,5 @@ module.exports = {
   getAllVisits, getAnalytics, getAuditLogs, getTemiRobots,
   getRobotStatus, getLocationHeatmap, getStaffActivity, getVisitFunnel,
   getFloorQueue, assignRobot, sendRobotCommand,
-  linkTemiRobot, unlinkTemiRobot,
+  linkTemiRobot, unlinkTemiRobot, approveTemiLink,
 };

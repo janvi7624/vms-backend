@@ -10,6 +10,12 @@ module.exports = (sequelize, DataTypes) =>
     battery_level: { type: DataTypes.INTEGER, allowNull: true },
     saved_locations: { type: DataTypes.JSONB, defaultValue: [] },
     organization_id: DataTypes.UUID,
+    pending_org_id:  { type: DataTypes.UUID, allowNull: true },
+    link_status:     {
+      type: DataTypes.ENUM('unlinked', 'pending', 'linked'),
+      allowNull: false,
+      defaultValue: 'unlinked',
+    },
   }, {
     tableName: 'temi_robots',
     timestamps: true,

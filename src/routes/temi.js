@@ -2,9 +2,14 @@ const router = require('express').Router();
 const {
   heartbeat, getConfig, getLocations, syncLocations, checkoutVisit, reportError,
   createServiceRequest, addFollowUp, getServiceRequests, updateServiceRequest,
-  staffControl,
+  staffControl, getLinkCandidates, requestLinkApproval,
 } = require('../controllers/temiController');
 const { authenticateTemi, authenticate } = require('../middleware/auth');
+
+// Public — Temi device checks which orgs have added its serial (for UnlinkedScreen)
+router.get('/link-candidates/:serial', getLinkCandidates);
+// Public — Temi device requests the pending org's admin to approve the link
+router.post('/request-approval', requestLinkApproval);
 
 // Public — frontend reads locations to populate dropdowns
 router.get('/locations/:serial', getLocations);

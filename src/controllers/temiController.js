@@ -355,8 +355,57 @@ const directNavigate = async (req, res, next) => {
   }
 };
 
+// GET /temi/link-candidates/:serial — returns orgs that have added this serial (no auth)
+const getLinkCandidates = async (req, res, next) => {
+  try {
+    const serial = req.params.serial?.toUpperCase();
+    const robot = await TemiRobot.findOne({
+      where: { serial_number: serial, link_status: 'pending' },
+      attributes: ['id', 'name', 'pending_org_id'],
+      raw: true,
+    });
+    if (!robot?.pending_org_id) return res.json({ candidates: [] });
+
+    const org = await Organization.findByPk(robot.pending_org_id, {
+      attributes: ['id', 'name', 'logo_url'],
+      raw: true,
+    });
+    if (!org) return res.json({ candidates: [] });
+
+    res.json({
+      candidates: [{ orgId: org.id, orgName: org.name, orgLogo: org.logo_url, robotName: robot.name }],
+    });
+  } catch (err) { next(err); }
+};
+
+// POST /temi/request-approval — Temi asks the pending org's admin to confirm the link
+const requestLinkApproval = async (req, res, next) => {
+  try {
+    const { serial } = req.body;
+    if (!serial) return res.status(400).json({ error: 'serial required' });
+
+    const robot = await TemiRobot.findOne({
+      where: { serial_number: serial.toUpperCase(), link_status: 'pending' },
+      attributes: ['id', 'name', 'pending_org_id', 'serial_number'],
+      raw: true,
+    });
+    if (!robot?.pending_org_id) {
+      return res.status(404).json({ error: 'No pending link found for this serial' });
+    }
+
+    if (io) {
+      io.to(`org:${robot.pending_org_id}`).emit('temi:link-request', {
+        serial:    robot.serial_number,
+        robotName: robot.name,
+      });
+    }
+
+    res.json({ ok: true });
+  } catch (err) { next(err); }
+};
+
 module.exports = {
   heartbeat, getConfig, getLocations, syncLocations, checkoutVisit, reportError,
   createServiceRequest, addFollowUp, getServiceRequests, updateServiceRequest,
-  directNavigate, staffControl, setIo,
+  directNavigate, staffControl, getLinkCandidates, requestLinkApproval, setIo,
 };
