@@ -299,6 +299,33 @@ const updateServiceRequest = async (req, res, next) => {
   }
 };
 
+// POST /temi/staff-control — Authenticated staff sends live commands to Temi during a call
+// Supported commands: navigate, returnHome, speak, stop
+const staffControl = async (req, res, next) => {
+  try {
+    const { command, location, text, serial } = req.body;
+    const ALLOWED = ['navigate', 'returnHome', 'speak', 'stop'];
+    if (!ALLOWED.includes(command)) {
+      return res.status(400).json({ error: `Invalid command. Allowed: ${ALLOWED.join(', ')}` });
+    }
+    if (command === 'navigate' && !location) {
+      return res.status(400).json({ error: 'location required for navigate' });
+    }
+    if (command === 'speak' && !text?.trim()) {
+      return res.status(400).json({ error: 'text required for speak' });
+    }
+    const temiSerial = serial || process.env.TEMI_SERIAL;
+    if (!temiSerial) return res.status(400).json({ error: 'Temi serial not configured' });
+
+    if (io) {
+      io.to(`temi:${temiSerial}`).emit('temi:command', { type: command, location, text });
+    }
+    res.json({ ok: true });
+  } catch (err) {
+    next(err);
+  }
+};
+
 // POST /visitor/direct-navigate — PUBLIC kiosk endpoint
 // Looks up employee's desk_location and sends temi:command navigate
 const directNavigate = async (req, res, next) => {
@@ -331,5 +358,5 @@ const directNavigate = async (req, res, next) => {
 module.exports = {
   heartbeat, getConfig, getLocations, syncLocations, checkoutVisit, reportError,
   createServiceRequest, addFollowUp, getServiceRequests, updateServiceRequest,
-  directNavigate, setIo,
+  directNavigate, staffControl, setIo,
 };

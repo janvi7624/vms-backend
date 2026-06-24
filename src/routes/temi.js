@@ -2,6 +2,7 @@ const router = require('express').Router();
 const {
   heartbeat, getConfig, getLocations, syncLocations, checkoutVisit, reportError,
   createServiceRequest, addFollowUp, getServiceRequests, updateServiceRequest,
+  staffControl,
 } = require('../controllers/temiController');
 const { authenticateTemi, authenticate } = require('../middleware/auth');
 
@@ -16,6 +17,9 @@ router.post('/service-request/:id/followup',   addFollowUp);
 // Authenticated — admin/sub_admin/receptionist manages service requests
 router.get('/service-requests',       authenticate, getServiceRequests);
 router.patch('/service-requests/:id', authenticate, updateServiceRequest);
+
+// Authenticated staff controls Temi live during a virtual meeting call
+router.post('/staff-control',         authenticate, staffControl);
 
 // Temi-authenticated routes
 router.use(authenticateTemi);
