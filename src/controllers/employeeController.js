@@ -27,7 +27,7 @@ const getVisits = async (req, res, next) => {
           [col('visitor.phone'),     'visitor_phone'],
           [col('visitor.company'),   'company'],
           [col('visitor.photo_url'), 'photo_url'],
-          [col('visitor.photo_url'), 'visitor_photo'],
+          [col('visitor.photo_url'), 'visitor_photo_url'],
           [col('qrCode.expires_at'), 'qr_expires_at'],
           [col('qrCode.is_used'), 'qr_used'],
         ],
@@ -76,7 +76,7 @@ const getPendingApprovals = async (req, res, next) => {
       [col('visitor.email'),     'visitor_email'],
       [col('visitor.phone'),     'visitor_phone'],
       [col('visitor.company'),   'company'],
-      [col('visitor.photo_url'), 'visitor_photo'],
+      [col('visitor.photo_url'), 'visitor_photo_url'],
       [col('visitor.photo_url'), 'photo_url'],
     ];
     const include = [{ model: Visitor, as: 'visitor', attributes: [], required: true }];

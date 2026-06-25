@@ -35,6 +35,8 @@ const getConfig = async (req, res, next) => {
     const robot = await TemiRobot.findOne({
       where: { serial_number: req.params.serial },
       attributes: {
+        // Exclude new columns so this endpoint works even before the migration runs
+        exclude: ['pending_org_id', 'link_status'],
         include: [
           [col('location.name'),        'location_name'],
           [col('location.address'),     'location_address'],
@@ -359,26 +361,55 @@ const directNavigate = async (req, res, next) => {
 const getLinkCandidates = async (req, res, next) => {
   try {
     const serial = req.params.serial?.toUpperCase();
-    const robot = await TemiRobot.findOne({
-      where: { serial_number: serial, link_status: 'pending' },
-      attributes: ['id', 'name', 'pending_org_id'],
-      raw: true,
-    });
-    if (!robot?.pending_org_id) return res.json({ candidates: [] });
+
+    // First: try new schema (migration has run) — look for pending link
+    let robot = null;
+    try {
+      robot = await TemiRobot.findOne({
+        where: { serial_number: serial, link_status: 'pending' },
+        attributes: ['id', 'name', 'pending_org_id', 'organization_id'],
+        raw: true,
+      });
+    } catch {
+      // Migration hasn't run yet — new columns don't exist.
+      // Fall back to checking the old organization_id column only.
+      const existing = await TemiRobot.findOne({
+        where: { serial_number: serial },
+        attributes: { exclude: ['pending_org_id', 'link_status'] },
+        raw: true,
+      });
+      // If the robot is already directly linked, tell the app to navigate Home
+      return res.json({ candidates: [], linked: Boolean(existing?.organization_id) });
+    }
+
+    // Robot is already directly linked (link_status = 'linked' or organization_id set)
+    if (!robot) {
+      const existing = await TemiRobot.findOne({
+        where: { serial_number: serial },
+        attributes: { exclude: ['pending_org_id', 'link_status'] },
+        raw: true,
+      });
+      return res.json({ candidates: [], linked: Boolean(existing?.organization_id) });
+    }
+
+    if (!robot.pending_org_id) return res.json({ candidates: [], linked: Boolean(robot.organization_id) });
 
     const org = await Organization.findByPk(robot.pending_org_id, {
       attributes: ['id', 'name', 'logo_url'],
       raw: true,
     });
-    if (!org) return res.json({ candidates: [] });
+    if (!org) return res.json({ candidates: [], linked: false });
 
     res.json({
       candidates: [{ orgId: org.id, orgName: org.name, orgLogo: org.logo_url, robotName: robot.name }],
+      linked: false,
     });
   } catch (err) { next(err); }
 };
 
-// POST /temi/request-approval — Temi asks the pending org's admin to confirm the link
+// POST /temi/request-approval — Temi confirms the org and immediately links itself.
+// Security model: admin entered the serial (auth gate); Temi user confirmed org name (identity gate).
+// No separate admin approval step required.
 const requestLinkApproval = async (req, res, next) => {
   try {
     const { serial } = req.body;
@@ -386,15 +417,65 @@ const requestLinkApproval = async (req, res, next) => {
 
     const robot = await TemiRobot.findOne({
       where: { serial_number: serial.toUpperCase(), link_status: 'pending' },
-      attributes: ['id', 'name', 'pending_org_id', 'serial_number'],
-      raw: true,
     });
     if (!robot?.pending_org_id) {
       return res.status(404).json({ error: 'No pending link found for this serial' });
     }
 
+    const org = await Organization.findByPk(robot.pending_org_id, {
+      attributes: ['id', 'name', 'logo_url'], raw: true,
+    });
+    if (!org) return res.status(404).json({ error: 'Organization not found' });
+
+    // Directly link — no separate admin approval needed
+    await robot.update({
+      organization_id: robot.pending_org_id,
+      pending_org_id:  null,
+      link_status:     'linked',
+    });
+
+    // Notify admin portal so it refreshes the robot list
     if (io) {
-      io.to(`org:${robot.pending_org_id}`).emit('temi:link-request', {
+      io.to(`org:${org.id}`).emit('temi:link-approved', {
+        serial:           robot.serial_number,
+        robotName:        robot.name,
+        organizationId:   org.id,
+        organizationName: org.name,
+      });
+    }
+
+    res.json({
+      ok:  true,
+      org: { id: org.id, name: org.name, logo: org.logo_url },
+    });
+  } catch (err) { next(err); }
+};
+
+// POST /temi/self-unlink — Temi disconnects itself from its current org (Temi-auth required)
+const selfUnlink = async (req, res, next) => {
+  try {
+    const { serial } = req.body;
+    if (!serial) return res.status(400).json({ error: 'serial required' });
+
+    const robot = await TemiRobot.findOne({
+      where: { serial_number: serial.toUpperCase() },
+    });
+    if (!robot) return res.status(404).json({ error: 'Robot not found' });
+
+    const prevOrgId = robot.organization_id;
+
+    try {
+      await robot.update({ organization_id: null, pending_org_id: null, link_status: 'unlinked' });
+    } catch {
+      // Migration not yet run — update only the original column
+      await TemiRobot.update(
+        { organization_id: null },
+        { where: { serial_number: serial.toUpperCase() } }
+      );
+    }
+
+    if (io && prevOrgId) {
+      io.to(`org:${prevOrgId}`).emit('temi:disconnected', {
         serial:    robot.serial_number,
         robotName: robot.name,
       });
@@ -407,5 +488,5 @@ const requestLinkApproval = async (req, res, next) => {
 module.exports = {
   heartbeat, getConfig, getLocations, syncLocations, checkoutVisit, reportError,
   createServiceRequest, addFollowUp, getServiceRequests, updateServiceRequest,
-  directNavigate, staffControl, getLinkCandidates, requestLinkApproval, setIo,
+  directNavigate, staffControl, getLinkCandidates, requestLinkApproval, selfUnlink, setIo,
 };

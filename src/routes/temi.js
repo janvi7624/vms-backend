@@ -2,7 +2,7 @@ const router = require('express').Router();
 const {
   heartbeat, getConfig, getLocations, syncLocations, checkoutVisit, reportError,
   createServiceRequest, addFollowUp, getServiceRequests, updateServiceRequest,
-  staffControl, getLinkCandidates, requestLinkApproval,
+  staffControl, getLinkCandidates, requestLinkApproval, selfUnlink,
 } = require('../controllers/temiController');
 const { authenticateTemi, authenticate } = require('../middleware/auth');
 
@@ -33,5 +33,6 @@ router.get('/config/:serial',  getConfig);
 router.post('/locations/sync', syncLocations);
 router.post('/checkout',       checkoutVisit);
 router.post('/error',          reportError);
+router.post('/self-unlink',    selfUnlink);
 
 module.exports = router;

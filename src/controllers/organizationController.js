@@ -254,7 +254,7 @@ const getOrgPendingApprovals = async (req, res, next) => {
           [col('visitor.email'), 'visitor_email'],
           [col('visitor.phone'), 'visitor_phone'],
           [col('visitor.company'), 'company'],
-          [col('visitor.photo_url'), 'visitor_photo'],
+          [col('visitor.photo_url'), 'visitor_photo_url'],
           [col('host.name'), 'employee_name'],
           [col('host.department'), 'department'],
           [col('host.email'), 'employee_email'],
