@@ -1,4 +1,4 @@
-const { Visit, Visitor, User, TemiRobot } = require('../models');
+const { Visit, Visitor, User, TemiRobot, Room } = require('../models');
 const { createOTPSession, validateOTP } = require('../services/otpService');
 const { sendOTPCode } = require('../services/emailService');
 const sms = require('../services/smsService');
@@ -104,9 +104,10 @@ const verifyOTP = async (req, res, next) => {
     const visit = await Visit.findOne({
       where: { id: result.visitId },
       include: [
-        { model: Visitor, as: 'visitor', attributes: ['name', 'email', 'phone', 'company'] },
-        { model: User, as: 'host', attributes: ['name', 'department', 'desk_location'] },
-        { model: TemiRobot, as: 'robot', attributes: ['name', 'serial_number'], required: false },
+        { model: Visitor,   as: 'visitor',     attributes: ['name', 'email', 'phone', 'company'] },
+        { model: User,      as: 'host',        attributes: ['name', 'department', 'desk_location'] },
+        { model: TemiRobot, as: 'robot',       attributes: ['name', 'serial_number'], required: false },
+        { model: Room,      as: 'meetingRoom', attributes: ['id', 'name', 'floor', 'building', 'capacity'], required: false },
       ],
     });
 
@@ -119,10 +120,11 @@ const verifyOTP = async (req, res, next) => {
     visit.checked_in_at = new Date();
     await visit.save();
 
-    const visitorName = visit.visitor?.name;
-    const hostName = visit.host?.name;
+    const visitorName    = visit.visitor?.name;
+    const hostName       = visit.host?.name;
     const hostDepartment = visit.host?.department;
-    const destination = visit.meeting_room || visit.host?.desk_location;
+    const roomDetails    = visit.meetingRoom || null;
+    const destination    = roomDetails?.name || visit.meeting_room || visit.host?.desk_location;
 
     // Emit socket event so employee dashboard updates in real time
     if (_io) {
@@ -144,13 +146,21 @@ const verifyOTP = async (req, res, next) => {
     res.json({
       valid: true,
       visit: {
-        id: visit.id,
+        id:             visit.id,
         visitorName,
         visitorCompany: visit.visitor?.company,
         hostName,
         hostDepartment,
+        hostDeskLocation: visit.host?.desk_location || null,
         destination,
-        meetingRoom: visit.meeting_room,
+        meetingRoom:    visit.meeting_room,
+        roomDetails:    roomDetails ? {
+          id:       roomDetails.id,
+          name:     roomDetails.name,
+          floor:    roomDetails.floor    || null,
+          building: roomDetails.building || null,
+          capacity: roomDetails.capacity || null,
+        } : null,
         robotName: visit.robot?.name || null,
       },
     });

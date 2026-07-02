@@ -18,6 +18,8 @@ router.get('/locations/:serial', getLocations);
 router.post('/service-request',                createServiceRequest);
 // Public — Temi device appends a follow-up item to an existing request
 router.post('/service-request/:id/followup',   addFollowUp);
+// Public — device unlinks itself (serial is the auth factor; kiosk needs this without Temi token)
+router.post('/self-unlink',                    selfUnlink);
 
 // Authenticated — admin/sub_admin/receptionist manages service requests
 router.get('/service-requests',       authenticate, getServiceRequests);
@@ -33,6 +35,5 @@ router.get('/config/:serial',  getConfig);
 router.post('/locations/sync', syncLocations);
 router.post('/checkout',       checkoutVisit);
 router.post('/error',          reportError);
-router.post('/self-unlink',    selfUnlink);
 
 module.exports = router;

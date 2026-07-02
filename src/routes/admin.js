@@ -8,6 +8,7 @@ const {
   getFloorQueue, assignRobot, sendRobotCommand,
   linkTemiRobot, unlinkTemiRobot, approveTemiLink,
 } = require('../controllers/adminController');
+const { getRooms, createRoom, updateRoom, deleteRoom } = require('../controllers/roomController');
 const { authenticate } = require('../middleware/auth');
 const { requireAdmin } = require('../middleware/roleCheck');
 
@@ -38,5 +39,11 @@ router.post('/temi-robots/:serial/approve-link',       approveTemiLink);
 router.get('/floor-queue',                getFloorQueue);
 router.patch('/visits/:id/assign-robot',  assignRobot);
 router.post('/robots/:serial/command',    sendRobotCommand);
+
+// Rooms
+router.get('/rooms',         getRooms);
+router.post('/rooms',        createRoom);
+router.put('/rooms/:id',     updateRoom);
+router.delete('/rooms/:id',  deleteRoom);
 
 module.exports = router;

@@ -109,7 +109,7 @@ const getPendingApprovals = async (req, res, next) => {
 // POST /employee/approve — approve or decline impromptu visit
 const approveVisit = async (req, res, next) => {
   try {
-    const { visitId, action, declineReason, meetingRoom, meetingType } = req.body;
+    const { visitId, action, declineReason, meetingRoom, meetingRoomId, meetingType } = req.body;
 
     if (!visitId || !['approve', 'decline'].includes(action)) {
       return res.status(400).json({ error: 'visitId and action (approve/decline) required' });
@@ -176,7 +176,8 @@ const approveVisit = async (req, res, next) => {
         virtualMeetingUrl = `https://meet.jit.si/NantaTechVMS-${roomCode}`;
         visit.virtual_meeting_url = virtualMeetingUrl;
       } else {
-        if (meetingRoom) visit.meeting_room = meetingRoom;
+        if (meetingRoomId) visit.meeting_room_id = meetingRoomId;
+        if (meetingRoom)   visit.meeting_room    = meetingRoom;
       }
       await visit.save();
 
@@ -302,20 +303,22 @@ const markNotificationsRead = async (req, res, next) => {
 const ALLOWED_ROLES = ['super_admin', 'admin', 'sub_admin', 'employee'];
 const searchEmployeesPublic = async (req, res, next) => {
   try {
-    const { q = '', roles } = req.query;
+    const { q = '', roles, orgId } = req.query;
     const roleFilter = roles
       ? roles.split(',').filter(r => ALLOWED_ROLES.includes(r))
       : ALLOWED_ROLES;
     if (roleFilter.length === 0) return res.json([]);
+    const where = {
+      role: roleFilter,
+      is_active: true,
+      [Op.or]: [
+        { name: { [Op.iLike]: `%${q}%` } },
+        { department: { [Op.iLike]: `%${q}%` } },
+      ],
+    };
+    if (orgId) where.organization_id = orgId;
     const rows = await User.findAll({
-      where: {
-        role: roleFilter,
-        is_active: true,
-        [Op.or]: [
-          { name: { [Op.iLike]: `%${q}%` } },
-          { department: { [Op.iLike]: `%${q}%` } },
-        ],
-      },
+      where,
       attributes: ['id', 'name', 'department', 'desk_location', 'role', 'is_dnd'],
       order: [['name', 'ASC']],
       limit: 100,

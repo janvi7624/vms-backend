@@ -14,6 +14,7 @@ const Notification = require('./notification')(sequelize, DataTypes);
 const TemiRobot      = require('./temiRobot')(sequelize, DataTypes);
 const OtpSession     = require('./otpSession')(sequelize, DataTypes);
 const ServiceRequest = require('./serviceRequest')(sequelize, DataTypes);
+const Room           = require('./room')(sequelize, DataTypes);
 
 // ── Associations ─────────────────────────────────────────────────────────────
 // Organization
@@ -22,6 +23,7 @@ Organization.hasMany(User,      { as: 'users',    foreignKey: 'organization_id',
 Organization.hasMany(Visitor,   { as: 'visitors', foreignKey: 'organization_id', onDelete: 'SET NULL' });
 Organization.hasMany(Visit,     { as: 'visits',   foreignKey: 'organization_id', onDelete: 'SET NULL' });
 Organization.hasMany(TemiRobot, { as: 'robots',   foreignKey: 'organization_id', onDelete: 'SET NULL' });
+Organization.hasMany(Room,      { as: 'rooms',    foreignKey: 'organization_id', onDelete: 'CASCADE' });
 
 // Branch
 Branch.belongsTo(Organization, { as: 'organization', foreignKey: 'organization_id' });
@@ -49,7 +51,8 @@ Visit.belongsTo(User,         { as: 'host', foreignKey: 'host_employee_id' });
 Visit.belongsTo(User,         { as: 'approver', foreignKey: 'approved_by' });
 Visit.belongsTo(Location,     { as: 'location', foreignKey: 'location_id' });
 Visit.belongsTo(Organization, { as: 'organization', foreignKey: 'organization_id' });
-Visit.belongsTo(TemiRobot,    { as: 'robot', foreignKey: 'robot_id' });
+Visit.belongsTo(TemiRobot,    { as: 'robot',       foreignKey: 'robot_id' });
+Visit.belongsTo(Room,         { as: 'meetingRoom', foreignKey: 'meeting_room_id' });
 Visit.hasOne(QrCode,          { as: 'qrCode', foreignKey: 'visit_id', onDelete: 'CASCADE' });
 Visit.hasMany(OtpSession,     { as: 'otpSessions', foreignKey: 'visit_id', onDelete: 'CASCADE' });
 Visit.hasMany(Notification,   { as: 'notifications', foreignKey: 'visit_id', onDelete: 'CASCADE' });
@@ -78,6 +81,10 @@ ServiceRequest.belongsTo(Organization, { as: 'organization', foreignKey: 'organi
 ServiceRequest.belongsTo(User,         { as: 'fulfilledBy',  foreignKey: 'fulfilled_by' });
 ServiceRequest.belongsTo(Visit,        { as: 'visit',        foreignKey: 'visit_id' });
 
+// Room
+Room.belongsTo(Organization, { as: 'organization', foreignKey: 'organization_id' });
+Room.hasMany(Visit,          { as: 'visits',       foreignKey: 'meeting_room_id', onDelete: 'SET NULL' });
+
 module.exports = {
   sequelize,
   Sequelize,
@@ -93,4 +100,5 @@ module.exports = {
   TemiRobot,
   OtpSession,
   ServiceRequest,
+  Room,
 };

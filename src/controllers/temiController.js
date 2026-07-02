@@ -389,10 +389,24 @@ const getLinkCandidates = async (req, res, next) => {
         attributes: { exclude: ['pending_org_id', 'link_status'] },
         raw: true,
       });
-      return res.json({ candidates: [], linked: Boolean(existing?.organization_id) });
+      if (existing?.organization_id) {
+        const org = await Organization.findByPk(existing.organization_id, {
+          attributes: ['id', 'name', 'logo_url'], raw: true,
+        });
+        return res.json({ candidates: [], linked: true, org: org || null });
+      }
+      return res.json({ candidates: [], linked: false });
     }
 
-    if (!robot.pending_org_id) return res.json({ candidates: [], linked: Boolean(robot.organization_id) });
+    if (!robot.pending_org_id) {
+      if (robot.organization_id) {
+        const org = await Organization.findByPk(robot.organization_id, {
+          attributes: ['id', 'name', 'logo_url'], raw: true,
+        });
+        return res.json({ candidates: [], linked: true, org: org || null });
+      }
+      return res.json({ candidates: [], linked: false });
+    }
 
     const org = await Organization.findByPk(robot.pending_org_id, {
       attributes: ['id', 'name', 'logo_url'],

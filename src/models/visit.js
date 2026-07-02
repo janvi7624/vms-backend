@@ -10,6 +10,7 @@ module.exports = (sequelize, DataTypes) =>
     checked_in_at: DataTypes.DATE,
     checked_out_at: DataTypes.DATE,
     meeting_room: DataTypes.STRING(255),
+    meeting_room_id: DataTypes.UUID,
     secure_token: { type: DataTypes.STRING(500), unique: true },
     notes: DataTypes.TEXT,
     location_id: DataTypes.UUID,
