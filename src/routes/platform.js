@@ -9,6 +9,7 @@ const {
   listAllVisits, updatePlatformVisit, deletePlatformVisit,
   listAuditLogs,
   updateRobot, deleteRobot,
+  listPlanUpgradeRequests, approvePlanUpgrade, rejectPlanUpgrade,
 } = require('../controllers/platformController');
 
 router.use(authenticate, requirePlatformAdmin);
@@ -44,6 +45,11 @@ router.delete('/robots/:id', deleteRobot);
 
 // Locations (for robot assignment)
 router.get('/locations',     listAllLocations);
+
+// Plan upgrade requests
+router.get('/plan-upgrade-requests',                      listPlanUpgradeRequests);
+router.put('/organizations/:id/approve-plan-upgrade',     approvePlanUpgrade);
+router.put('/organizations/:id/reject-plan-upgrade',      rejectPlanUpgrade);
 
 // Audit logs
 router.get('/audit-logs', listAuditLogs);

@@ -1,6 +1,6 @@
 const bcrypt = require('bcryptjs');
 const { Op, col, fn, literal } = require('sequelize');
-const { User, Visit, Visitor, AuditLog, TemiRobot, Location, Organization, sequelize } = require('../models');
+const { User, Visit, Visitor, AuditLog, TemiRobot, Location, Organization, Room, sequelize } = require('../models');
 const { canManage } = require('../middleware/roleCheck');
 const { emitAnalyticsUpdate, emitToTemi, emitToOrg } = require('../services/notificationService');
 const { SOCKET_EVENTS } = require('../config/constants');
@@ -768,6 +768,110 @@ const unlinkTemiRobot = async (req, res, next) => {
   }
 };
 
+// ── Subscription Info ─────────────────────────────────────────────────────────
+
+const getSubscription = async (req, res, next) => {
+  try {
+    const org = await Organization.findByPk(req.user.organization_id, {
+      attributes: ['id', 'name', 'plan', 'features', 'max_employees', 'max_robots',
+        'subscription_start', 'subscription_end', 'pending_plan', 'pending_plan_requested_at'],
+    });
+    if (!org) return res.status(404).json({ error: 'Organization not found' });
+    res.json(org.toJSON());
+  } catch (err) {
+    next(err);
+  }
+};
+
+// ── Plan Upgrade Request ───────────────────────────────────────────────────────
+
+const requestPlanUpgrade = async (req, res, next) => {
+  try {
+    const { plan } = req.body;
+    const { PLAN_FEATURES, PLAN_LIMITS } = require('./platformController');
+
+    if (!PLAN_FEATURES[plan]) {
+      return res.status(400).json({ error: `Invalid plan: ${plan}` });
+    }
+
+    const org = await Organization.findByPk(req.user.organization_id, {
+      attributes: ['id', 'name', 'plan', 'pending_plan', 'email', 'billing_email'],
+    });
+    if (!org) return res.status(404).json({ error: 'Organization not found' });
+
+    if (org.plan === plan) {
+      return res.status(400).json({ error: 'Your organization is already on this plan.' });
+    }
+
+    const planOrder = ['standard', 'professional', 'enterprise'];
+    if (planOrder.indexOf(plan) <= planOrder.indexOf(org.plan)) {
+      return res.status(400).json({ error: 'Downgrade requests must be handled by the super admin directly.' });
+    }
+
+    if (org.pending_plan) {
+      return res.status(409).json({
+        error: `A plan upgrade request to "${org.pending_plan}" is already pending super admin approval.`,
+      });
+    }
+
+    await org.update({ pending_plan: plan, pending_plan_requested_at: new Date() });
+
+    // Notify all super admins by email
+    const { sendPlanUpgradeRequest } = require('../services/emailService');
+    const superAdmins = await User.findAll({
+      where: { role: 'super_admin', is_active: true },
+      attributes: ['email', 'name'],
+    });
+    for (const sa of superAdmins) {
+      sendPlanUpgradeRequest({
+        superAdminEmail: sa.email,
+        superAdminName: sa.name,
+        orgName: org.name,
+        currentPlan: org.plan,
+        requestedPlan: plan,
+      }).catch((e) => console.error('[PlanUpgrade] Email error:', e.message));
+    }
+
+    res.json({
+      message: `Plan upgrade request to "${plan}" submitted. A super admin will review and approve it shortly.`,
+      pendingPlan: plan,
+    });
+  } catch (err) {
+    next(err);
+  }
+};
+
+// GET /admin/locations
+// Returns this org's navigation destinations:
+//   • If a linked Temi has saved locations → return those (source: 'temi')
+//   • Otherwise → return the org's Rooms (source: 'rooms')
+const getOrgLocations = async (req, res, next) => {
+  try {
+    const orgId = req.user.organization_id;
+
+    const robot = await TemiRobot.findOne({
+      where: { organization_id: orgId, link_status: 'linked' },
+      attributes: ['saved_locations'],
+      raw: true,
+    });
+
+    if (robot?.saved_locations?.length) {
+      return res.json({ source: 'temi', locations: robot.saved_locations });
+    }
+
+    const rooms = await Room.findAll({
+      where: { organization_id: orgId },
+      attributes: ['name'],
+      order: [['name', 'ASC']],
+      raw: true,
+    });
+
+    return res.json({ source: 'rooms', locations: rooms.map(r => r.name) });
+  } catch (err) {
+    next(err);
+  }
+};
+
 module.exports = {
   setAdminIo,
   getEmployees, createEmployee, updateEmployee, deleteEmployee,
@@ -775,4 +879,6 @@ module.exports = {
   getRobotStatus, getLocationHeatmap, getStaffActivity, getVisitFunnel,
   getFloorQueue, assignRobot, sendRobotCommand,
   linkTemiRobot, unlinkTemiRobot, approveTemiLink,
+  getSubscription, requestPlanUpgrade,
+  getOrgLocations,
 };

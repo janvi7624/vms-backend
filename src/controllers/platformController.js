@@ -3,7 +3,53 @@ const { Op, col, fn, literal } = require('sequelize');
 const { sequelize, Organization, User, Visit, TemiRobot, Branch, Location, AuditLog, Visitor } = require('../models');
 
 const PLAN_PRICES = { standard: 49, professional: 149, enterprise: 499 };
-const STAFF_ROLES  = ['admin', 'sub_admin', 'employee'];
+
+const PLAN_LIMITS = {
+  standard:     { emp: 50,  robots: 1  },
+  professional: { emp: 200, robots: 3  },
+  enterprise:   { emp: 500, robots: 10 },
+};
+
+const PLAN_FEATURES = {
+  standard: {
+    visitor_checkin:  true,
+    otp_verification: true,
+    walk_in_kiosk:    true,
+    rooms:            false,
+    analytics:        false,
+    robot_control:    false,
+    heatmaps:         false,
+    sub_admin:        false,
+    multi_branch:     false,
+    service_requests: false,
+  },
+  professional: {
+    visitor_checkin:  true,
+    otp_verification: true,
+    walk_in_kiosk:    true,
+    rooms:            true,
+    analytics:        true,
+    robot_control:    true,
+    heatmaps:         false,
+    sub_admin:        true,
+    multi_branch:     true,
+    service_requests: true,
+  },
+  enterprise: {
+    visitor_checkin:  true,
+    otp_verification: true,
+    walk_in_kiosk:    true,
+    rooms:            true,
+    analytics:        true,
+    robot_control:    true,
+    heatmaps:         true,
+    sub_admin:        true,
+    multi_branch:     true,
+    service_requests: true,
+  },
+};
+
+const STAFF_ROLES = ['admin', 'sub_admin', 'employee'];
 
 // ── Organizations CRUD ────────────────────────────────────────────────────
 
@@ -96,9 +142,8 @@ const createOrganization = async (req, res, next) => {
       return res.status(400).json({ error: 'name, slug, adminEmail, adminPassword are required' });
     }
 
-    const limits = PLAN_PRICES[plan] ? plan : 'standard';
-    const planDefaults = { standard: { emp: 10, robots: 1 }, professional: { emp: 50, robots: 3 }, enterprise: { emp: 500, robots: 10 } };
-    const defaults = planDefaults[limits];
+    const resolvedPlan = PLAN_LIMITS[plan] ? plan : 'standard';
+    const defaults = PLAN_LIMITS[resolvedPlan];
 
     const result = await sequelize.transaction(async (t) => {
       const org = await Organization.create({
@@ -108,12 +153,13 @@ const createOrganization = async (req, res, next) => {
         address,
         phone,
         email,
-        plan: limits,
+        plan: resolvedPlan,
         max_employees: maxEmployees || defaults.emp,
         subscription_start: subscriptionStart || new Date(),
         subscription_end: subscriptionEnd || null,
         billing_email: billingEmail || email,
         max_robots: maxRobots || defaults.robots,
+        features: PLAN_FEATURES[resolvedPlan],
       }, { transaction: t });
 
       const hash = await bcrypt.hash(adminPassword, 12);
@@ -156,7 +202,12 @@ const updateOrganization = async (req, res, next) => {
     if (address != null)           org.address           = address;
     if (phone != null)             org.phone             = phone;
     if (email != null)             org.email             = email;
-    if (plan != null)              org.plan              = plan;
+    if (plan != null && PLAN_FEATURES[plan]) {
+      org.plan     = plan;
+      org.features = PLAN_FEATURES[plan];
+      if (maxEmployees == null) org.max_employees = PLAN_LIMITS[plan].emp;
+      if (maxRobots == null)    org.max_robots    = PLAN_LIMITS[plan].robots;
+    }
     if (maxEmployees != null)      org.max_employees     = maxEmployees;
     if (isActive != null)          org.is_active         = isActive;
     if (subscriptionStart != null) org.subscription_start = subscriptionStart;
@@ -493,6 +544,84 @@ const deletePlatformVisit = async (req, res, next) => {
   } catch (err) { next(err); }
 };
 
+// ── Plan Upgrade Requests ──────────────────────────────────────────────────────
+
+const listPlanUpgradeRequests = async (req, res, next) => {
+  try {
+    const orgs = await Organization.findAll({
+      where: { pending_plan: { [Op.ne]: null } },
+      attributes: ['id', 'name', 'email', 'plan', 'pending_plan', 'pending_plan_requested_at'],
+      order: [['pending_plan_requested_at', 'ASC']],
+      raw: true,
+    });
+    res.json({ requests: orgs, total: orgs.length });
+  } catch (err) {
+    next(err);
+  }
+};
+
+const approvePlanUpgrade = async (req, res, next) => {
+  try {
+    const org = await Organization.findByPk(req.params.id);
+    if (!org) return res.status(404).json({ error: 'Organization not found' });
+    if (!org.pending_plan) return res.status(400).json({ error: 'No pending plan upgrade for this organization.' });
+
+    const newPlan = org.pending_plan;
+    await org.update({
+      plan:                      newPlan,
+      features:                  PLAN_FEATURES[newPlan],
+      max_employees:             PLAN_LIMITS[newPlan].emp,
+      max_robots:                PLAN_LIMITS[newPlan].robots,
+      pending_plan:              null,
+      pending_plan_requested_at: null,
+    });
+
+    const { sendPlanUpgradeResult } = require('../services/emailService');
+    const orgAdmin = await User.findOne({
+      where: { organization_id: org.id, role: 'admin', is_active: true },
+      attributes: ['email', 'name'],
+    });
+    if (orgAdmin?.email) {
+      sendPlanUpgradeResult({
+        adminEmail: orgAdmin.email, adminName: orgAdmin.name,
+        orgName: org.name, requestedPlan: newPlan, approved: true,
+      }).catch((e) => console.error('[PlanUpgrade] Approval email error:', e.message));
+    }
+
+    res.json({ message: `Plan upgraded to "${newPlan}" successfully.`, org: org.toJSON() });
+  } catch (err) {
+    next(err);
+  }
+};
+
+const rejectPlanUpgrade = async (req, res, next) => {
+  try {
+    const { reason } = req.body;
+    const org = await Organization.findByPk(req.params.id);
+    if (!org) return res.status(404).json({ error: 'Organization not found' });
+    if (!org.pending_plan) return res.status(400).json({ error: 'No pending plan upgrade for this organization.' });
+
+    const requestedPlan = org.pending_plan;
+    await org.update({ pending_plan: null, pending_plan_requested_at: null });
+
+    const { sendPlanUpgradeResult } = require('../services/emailService');
+    const orgAdmin = await User.findOne({
+      where: { organization_id: org.id, role: 'admin', is_active: true },
+      attributes: ['email', 'name'],
+    });
+    if (orgAdmin?.email) {
+      sendPlanUpgradeResult({
+        adminEmail: orgAdmin.email, adminName: orgAdmin.name,
+        orgName: org.name, requestedPlan, approved: false, reason: reason || '',
+      }).catch((e) => console.error('[PlanUpgrade] Rejection email error:', e.message));
+    }
+
+    res.json({ message: 'Plan upgrade request rejected.' });
+  } catch (err) {
+    next(err);
+  }
+};
+
 // ── Audit Logs ─────────────────────────────────────────────────────────────
 
 const listAuditLogs = async (req, res, next) => {
@@ -552,6 +681,8 @@ const deleteRobot = async (req, res, next) => {
 };
 
 module.exports = {
+  PLAN_FEATURES,
+  PLAN_LIMITS,
   listOrganizations, getOrganization, createOrganization, updateOrganization, deleteOrganization,
   approveOrganization, rejectOrganization,
   getPlatformAnalytics, getPlatformBilling, listAllRobots, listAllLocations,
@@ -559,4 +690,5 @@ module.exports = {
   listAllVisits, updatePlatformVisit, deletePlatformVisit,
   listAuditLogs,
   updateRobot, deleteRobot,
+  listPlanUpgradeRequests, approvePlanUpgrade, rejectPlanUpgrade,
 };

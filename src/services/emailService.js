@@ -236,7 +236,54 @@ const sendOrgRejectionEmail = async ({ adminEmail, adminName, orgName, reason })
   });
 };
 
+const sendPlanUpgradeRequest = async ({ superAdminEmail, superAdminName, orgName, currentPlan, requestedPlan }) => {
+  await sendEmail({
+    to: superAdminEmail,
+    subject: `Plan Upgrade Request — ${orgName}`,
+    html: `
+      <div style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto;background:#f9f9f9;padding:20px;border-radius:8px">
+        <div style="background:#E65C3A;padding:24px;border-radius:8px 8px 0 0;text-align:center">
+          <h1 style="color:#fff;margin:0;font-size:22px">Plan Upgrade Request</h1>
+        </div>
+        <div style="background:#fff;padding:30px;border-radius:0 0 8px 8px">
+          <p>Dear <strong>${superAdminName}</strong>,</p>
+          <p><strong>${orgName}</strong> has requested a plan upgrade:</p>
+          <table style="width:100%;border-collapse:collapse;margin:16px 0">
+            <tr><td style="padding:8px;background:#f3f4f6;font-weight:bold">Current Plan</td><td style="padding:8px;text-transform:capitalize">${currentPlan}</td></tr>
+            <tr><td style="padding:8px;background:#f3f4f6;font-weight:bold">Requested Plan</td><td style="padding:8px;text-transform:capitalize;color:#E65C3A;font-weight:bold">${requestedPlan}</td></tr>
+          </table>
+          <p style="color:#555;font-size:13px">Please log in to the platform dashboard to approve or reject this request.</p>
+        </div>
+      </div>
+    `,
+  });
+};
+
+const sendPlanUpgradeResult = async ({ adminEmail, adminName, orgName, requestedPlan, approved, reason }) => {
+  await sendEmail({
+    to: adminEmail,
+    subject: `Plan Upgrade ${approved ? 'Approved' : 'Rejected'} — ${orgName}`,
+    html: `
+      <div style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto;background:#f9f9f9;padding:20px;border-radius:8px">
+        <div style="background:${approved ? '#16a34a' : '#dc2626'};padding:24px;border-radius:8px 8px 0 0;text-align:center">
+          <h1 style="color:#fff;margin:0;font-size:22px">Plan Upgrade ${approved ? 'Approved' : 'Rejected'}</h1>
+        </div>
+        <div style="background:#fff;padding:30px;border-radius:0 0 8px 8px">
+          <p>Dear <strong>${adminName}</strong>,</p>
+          ${approved
+            ? `<p>Your plan upgrade request for <strong>${orgName}</strong> has been <strong style="color:#16a34a">approved</strong>. Your account is now on the <strong style="text-transform:capitalize">${requestedPlan}</strong> plan.</p>`
+            : `<p>Your plan upgrade request to <strong style="text-transform:capitalize">${requestedPlan}</strong> for <strong>${orgName}</strong> was <strong style="color:#dc2626">not approved</strong>. Your current plan remains unchanged.</p>`
+          }
+          ${!approved && reason ? `<p><strong>Reason:</strong> ${reason}</p>` : ''}
+          <p style="color:#555;font-size:13px">Please contact support if you have questions.</p>
+        </div>
+      </div>
+    `,
+  });
+};
+
 module.exports = {
   sendVisitorInvite, sendQRCode, sendVisitDeclined, sendApprovalNotification, sendOTPCode,
   sendOrgRegistrationConfirmation, sendOrgRegistrationToAdmin, sendOrgApprovalEmail, sendOrgRejectionEmail,
+  sendPlanUpgradeRequest, sendPlanUpgradeResult,
 };

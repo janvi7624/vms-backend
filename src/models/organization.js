@@ -22,6 +22,9 @@ module.exports = (sequelize, DataTypes) =>
     subscription_end: DataTypes.DATEONLY,
     billing_email: DataTypes.STRING(200),
     max_robots: { type: DataTypes.INTEGER, defaultValue: 2 },
+    features: { type: DataTypes.JSONB, defaultValue: {} },
+    pending_plan: DataTypes.STRING(50),
+    pending_plan_requested_at: DataTypes.DATE,
   }, {
     tableName: 'organizations',
     timestamps: true,

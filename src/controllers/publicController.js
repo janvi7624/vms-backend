@@ -1,6 +1,7 @@
 const bcrypt = require('bcryptjs');
 const { sequelize, Organization, User } = require('../models');
 const { sendOrgRegistrationToAdmin, sendOrgRegistrationConfirmation, sendOrgApprovalEmail } = require('../services/emailService');
+const { PLAN_FEATURES, PLAN_LIMITS } = require('./platformController');
 
 // Stripe is optional — only available when STRIPE_SECRET_KEY is set
 let stripe = null;
@@ -30,6 +31,8 @@ const registerOrganization = async (req, res, next) => {
       orgName, orgEmail, orgPhone, orgAddress, orgWebsite, industry,
       // Admin details
       adminName, adminEmail, adminPhone, adminPassword,
+      // Plan selection
+      plan,
     } = req.body;
 
     if (!orgName || !orgEmail || !adminEmail || !adminPassword || !adminName) {
@@ -73,8 +76,11 @@ const registerOrganization = async (req, res, next) => {
         industry: industry || null,
         status: 'pending_verification',
         is_active: false,
-        plan: 'standard',
+        plan: PLAN_FEATURES[plan] ? plan : 'standard',
+        max_employees: PLAN_LIMITS[PLAN_FEATURES[plan] ? plan : 'standard'].emp,
+        max_robots: PLAN_LIMITS[PLAN_FEATURES[plan] ? plan : 'standard'].robots,
         billing_email: orgEmail.toLowerCase(),
+        features: PLAN_FEATURES[PLAN_FEATURES[plan] ? plan : 'standard'],
       }, { transaction: t });
 
       const hash = await bcrypt.hash(adminPassword, 12);
@@ -226,15 +232,19 @@ const stripeWebhook = async (req, res) => {
     const { orgId, plan } = session.metadata || {};
     if (orgId) {
       try {
+        const resolvedPlan = PLAN_FEATURES[plan] ? plan : 'standard';
         await Organization.update(
           {
-            plan:               plan || 'standard',
+            plan:               resolvedPlan,
+            features:           PLAN_FEATURES[resolvedPlan],
+            max_employees:      PLAN_LIMITS[resolvedPlan].emp,
+            max_robots:         PLAN_LIMITS[resolvedPlan].robots,
             status:             'pending_verification',
             subscription_start: new Date(),
           },
           { where: { id: orgId } },
         );
-        console.log(`[Stripe] Org ${orgId} payment complete → pending_verification`);
+        console.log(`[Stripe] Org ${orgId} payment complete → pending_verification, plan=${resolvedPlan}`);
       } catch (err) {
         console.error('[Stripe] Failed to update org after payment:', err.message);
       }

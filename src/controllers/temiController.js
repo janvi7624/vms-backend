@@ -94,9 +94,10 @@ const getLocations = async (req, res, next) => {
       raw: true,
     });
 
-    const savedRooms = robot?.saved_locations?.length
-      ? robot.saved_locations
-      : ['reception', 'meeting_room_a', 'meeting_room_b', 'conference_hall', 'lobby', 'waiting_area'];
+    // Return only this robot's real saved locations. Empty array when the robot
+    // doesn't exist or has never synced — callers that need an org-scoped
+    // fallback to Rooms should use GET /admin/locations instead.
+    const savedRooms = robot?.saved_locations?.length ? robot.saved_locations : [];
 
     res.json({ savedRooms });
   } catch (err) {
