@@ -14,7 +14,7 @@ const start = async () => {
       const os = require('os');
       const localIp = Object.values(os.networkInterfaces()).flat()
         .find(i => i.family === 'IPv4' && !i.internal)?.address || 'localhost';
-      console.log(`🚀 Temi VMS Server running on port ${PORT}`);
+      console.log(`🚀 VisitIQ Server running on port ${PORT}`);
       console.log(`   Local:   http://localhost:${PORT}`);
       console.log(`   Network: http://${localIp}:${PORT}`);
       console.log(`   Environment: ${process.env.NODE_ENV || 'development'}`);

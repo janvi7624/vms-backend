@@ -23,7 +23,7 @@ const sendEmail = async ({ to, subject, html }) => {
     return;
   }
   await getTransporter().sendMail({
-    from: process.env.EMAIL_FROM || 'VMS System <noreply@vms.com>',
+    from: process.env.EMAIL_FROM || 'VisitIQ <noreply@visitiq.com>',
     to,
     subject,
     html,
@@ -148,7 +148,7 @@ const sendOrgRegistrationConfirmation = async ({ adminName, adminEmail, orgName 
     html: `
       <div style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto;background:#f9f9f9;padding:20px;border-radius:8px">
         <div style="background:#1a1a2e;padding:24px;border-radius:8px 8px 0 0;text-align:center">
-          <h1 style="color:#fff;margin:0;font-size:22px">VMS Platform</h1>
+          <h1 style="color:#fff;margin:0;font-size:22px">VisitIQ</h1>
         </div>
         <div style="background:#fff;padding:30px;border-radius:0 0 8px 8px">
           <p>Dear <strong>${adminName}</strong>,</p>

@@ -140,7 +140,7 @@ app.use('/api/receptionist', receptionistRoutes);
 app.use('/api/public', publicRoutes);
 
 app.get('/health', (req, res) =>
-  res.json({ status: 'ok', timestamp: new Date().toISOString(), service: 'Temi VMS API' })
+  res.json({ status: 'ok', timestamp: new Date().toISOString(), service: 'VisitIQ API' })
 );
 
 app.use(errorHandler);

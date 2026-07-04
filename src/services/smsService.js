@@ -46,7 +46,7 @@ function buildOtpMessage({ visitorName, otp, expiresMinutes }) {
     `Valid for ${expiresMinutes} minutes only.\n` +
     `Please enter this OTP at the reception kiosk.\n` +
     `Do NOT share this OTP with anyone.\n` +
-    `- NantaTech VMS`
+    `- VisitIQ`
   );
 }
 // ──────────────────────────────────────────────────────────────────────────────
