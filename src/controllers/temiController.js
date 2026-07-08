@@ -9,8 +9,9 @@ const setIo = (socketIo) => { io = socketIo; };
 // POST /temi/heartbeat — Temi robot pings to update status
 const heartbeat = async (req, res, next) => {
   try {
-    const { serial, status = 'online', currentTask, batteryLevel } = req.body;
-    if (!serial) return res.status(400).json({ error: 'Serial number required' });
+    const { serial: rawSerial, status = 'online', currentTask, batteryLevel } = req.body;
+    if (!rawSerial) return res.status(400).json({ error: 'Serial number required' });
+    const serial = rawSerial.toUpperCase();
 
     const updates = { serial_number: serial, status, current_task: currentTask, last_seen: new Date() };
     if (batteryLevel != null) updates.battery_level = batteryLevel;
@@ -33,7 +34,7 @@ const heartbeat = async (req, res, next) => {
 const getConfig = async (req, res, next) => {
   try {
     const robot = await TemiRobot.findOne({
-      where: { serial_number: req.params.serial },
+      where: { serial_number: req.params.serial?.toUpperCase() },
       attributes: {
         // Exclude new columns so this endpoint works even before the migration runs
         exclude: ['pending_org_id', 'link_status'],
@@ -65,10 +66,11 @@ const getConfig = async (req, res, next) => {
 // POST /temi/locations/sync — Temi pushes its saved locations to backend
 const syncLocations = async (req, res, next) => {
   try {
-    const { serial, locations } = req.body;
-    if (!serial || !Array.isArray(locations)) {
+    const { serial: rawSerial, locations } = req.body;
+    if (!rawSerial || !Array.isArray(locations)) {
       return res.status(400).json({ error: 'serial and locations[] required' });
     }
+    const serial = rawSerial.toUpperCase();
 
     await TemiRobot.upsert(
       { serial_number: serial, saved_locations: locations, last_seen: new Date() }
@@ -89,7 +91,7 @@ const syncLocations = async (req, res, next) => {
 const getLocations = async (req, res, next) => {
   try {
     const robot = await TemiRobot.findOne({
-      where: { serial_number: req.params.serial },
+      where: { serial_number: req.params.serial?.toUpperCase() },
       attributes: ['saved_locations'],
       raw: true,
     });
@@ -168,8 +170,9 @@ const reportError = async (req, res, next) => {
 // Body: { serial, item, visitId?, visitorName?, location? }
 const createServiceRequest = async (req, res, next) => {
   try {
-    const { serial, item = 'refreshment', visitId, visitorName, location } = req.body;
-    if (!serial) return res.status(400).json({ error: 'serial required' });
+    const { serial: rawSerial, item = 'refreshment', visitId, visitorName, location } = req.body;
+    if (!rawSerial) return res.status(400).json({ error: 'serial required' });
+    const serial = rawSerial.toUpperCase();
 
     const robot = await TemiRobot.findOne({
       where: { serial_number: serial },
