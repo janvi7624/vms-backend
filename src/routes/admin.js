@@ -6,7 +6,7 @@ const {
   getAllVisits, getAnalytics, getAuditLogs, getTemiRobots,
   getRobotStatus, getLocationHeatmap, getStaffActivity, getVisitFunnel,
   getFloorQueue, assignRobot, sendRobotCommand,
-  linkTemiRobot, unlinkTemiRobot, approveTemiLink,
+  linkTemiRobot, unlinkTemiRobot, approveTemiLink, getSerialHistory, renameTemiRobot,
   getSubscription, requestPlanUpgrade,
   getOrgLocations,
 } = require('../controllers/adminController');
@@ -25,7 +25,8 @@ router.delete('/employees/:id', deleteEmployee);
 router.get('/visits',           getAllVisits);
 router.get('/analytics',        requireFeature('analytics'), getAnalytics);
 router.get('/audit-logs',       getAuditLogs);
-router.get('/temi-robots',      getTemiRobots);
+router.get('/temi-robots',                getTemiRobots);
+router.get('/temi-robots/serial-history', getSerialHistory);
 
 // Analytics extensions (professional+)
 router.get('/robot-status',     requireFeature('analytics'),     getRobotStatus);
@@ -37,6 +38,7 @@ router.get('/visit-funnel',     requireFeature('analytics'),     getVisitFunnel)
 router.post('/temi-robots/link',                       requireFeature('robot_control'), linkTemiRobot);
 router.delete('/temi-robots/:serial/unlink',           requireFeature('robot_control'), unlinkTemiRobot);
 router.post('/temi-robots/:serial/approve-link',       requireFeature('robot_control'), approveTemiLink);
+router.patch('/temi-robots/:serial/name',              requireFeature('robot_control'), renameTemiRobot);
 
 // Sub Admin / Floor Manager (professional+)
 router.get('/floor-queue',                requireFeature('robot_control'), getFloorQueue);

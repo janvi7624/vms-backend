@@ -680,7 +680,7 @@ const linkTemiRobot = async (req, res, next) => {
         serial_number:  serial,
         pending_org_id: orgId,
         link_status:    'pending',
-        name:           name?.trim() || existing?.name || 'Temi',
+        name:           name?.trim() || existing?.name || `Robot - ${serial}`,
       },
       { returning: true }
     );
@@ -763,6 +763,65 @@ const unlinkTemiRobot = async (req, res, next) => {
 
     await robot.update({ organization_id: null, pending_org_id: null, link_status: 'unlinked' });
     res.json({ ok: true, message: `Robot ${serial} unlinked from your organisation.` });
+  } catch (err) {
+    next(err);
+  }
+};
+
+// PATCH /admin/temi-robots/:serial/name — rename a robot/kiosk; the serial
+// number itself is immutable and is never accepted from this endpoint.
+const renameTemiRobot = async (req, res, next) => {
+  try {
+    const serial = req.params.serial?.toUpperCase();
+    const orgId  = req.user.organization_id;
+    const name   = req.body.name?.trim();
+    if (!name) return res.status(400).json({ error: 'Name is required' });
+
+    const robot = await TemiRobot.findOne({
+      where: {
+        serial_number: serial,
+        [Op.or]: [{ organization_id: orgId }, { pending_org_id: orgId }],
+      },
+    });
+    if (!robot) return res.status(404).json({ error: 'Robot not found in your organisation' });
+
+    await robot.update({ name });
+    res.json({ ok: true, name: robot.name });
+  } catch (err) {
+    next(err);
+  }
+};
+
+// GET /admin/temi-robots/serial-history — every serial ever linked to this org,
+// most recently linked first. Survives unlinks (audit logs aren't cleared on unlink).
+const getSerialHistory = async (req, res, next) => {
+  try {
+    const orgId = req.user.organization_id;
+    const logs = await AuditLog.findAll({
+      where: {
+        action:   { [Op.in]: ['temi_link_pending', 'temi_link_approved'] },
+        metadata: { [Op.contains]: { orgId } },
+      },
+      attributes: ['metadata'],
+      order: [['created_at', 'DESC']],
+      raw: true,
+    });
+
+    const seen    = new Set();
+    let   serials = [];
+    for (const log of logs) {
+      const serial = log.metadata?.serial;
+      if (serial && !seen.has(serial)) {
+        seen.add(serial);
+        serials.push(serial);
+      }
+    }
+
+    const { type } = req.query;
+    if (type === 'kiosk')      serials = serials.filter(s => s.startsWith('KIOSK-'));
+    else if (type === 'robot') serials = serials.filter(s => !s.startsWith('KIOSK-'));
+
+    res.json({ serials: serials.slice(0, 50) });
   } catch (err) {
     next(err);
   }
@@ -878,7 +937,7 @@ module.exports = {
   getAllVisits, getAnalytics, getAuditLogs, getTemiRobots,
   getRobotStatus, getLocationHeatmap, getStaffActivity, getVisitFunnel,
   getFloorQueue, assignRobot, sendRobotCommand,
-  linkTemiRobot, unlinkTemiRobot, approveTemiLink,
+  linkTemiRobot, unlinkTemiRobot, approveTemiLink, getSerialHistory, renameTemiRobot,
   getSubscription, requestPlanUpgrade,
   getOrgLocations,
 };
