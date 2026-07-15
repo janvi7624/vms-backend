@@ -175,7 +175,7 @@ const createStripeCheckout = async (req, res, next) => {
     if (org.status === 'active') return res.status(400).json({ error: 'Organization is already active' });
 
     const priceInfo = PLAN_PRICES_STRIPE[plan] || PLAN_PRICES_STRIPE.standard;
-    const webUrl    = process.env.WEB_URL || 'http://localhost:5173';
+    const webUrl    = process.env.FRONTEND_URL || 'http://localhost:5173';
 
     const session = await stripe.checkout.sessions.create({
       payment_method_types: ['card'],

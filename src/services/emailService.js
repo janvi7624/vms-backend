@@ -163,7 +163,7 @@ const sendOrgRegistrationConfirmation = async ({ adminName, adminEmail, orgName 
 };
 
 const sendOrgRegistrationToAdmin = async ({ superAdminEmail, superAdminName, orgName, orgEmail, adminName, adminEmail, orgId }) => {
-  const dashboardUrl = `${process.env.WEB_URL || 'http://localhost:5173'}/platform`;
+  const dashboardUrl = `${process.env.FRONTEND_URL || 'http://localhost:5173'}/platform`;
   await sendEmail({
     to: superAdminEmail,
     subject: `New Organization Registration — ${orgName}`,
@@ -206,7 +206,7 @@ const sendOrgApprovalEmail = async ({ adminEmail, adminName, orgName }) => {
           <p>Great news! <strong>${orgName}</strong> has been approved on the VMS platform. Your account is now active.</p>
           <p>You can now log in and start managing your organization.</p>
           <div style="text-align:center;margin:24px 0">
-            <a href="${process.env.WEB_URL || 'http://localhost:5173'}/login" style="background:#16a34a;color:#fff;padding:14px 28px;border-radius:6px;text-decoration:none;font-weight:bold">
+            <a href="${process.env.FRONTEND_URL || 'http://localhost:5173'}/login" style="background:#16a34a;color:#fff;padding:14px 28px;border-radius:6px;text-decoration:none;font-weight:bold">
               Log In Now
             </a>
           </div>
@@ -283,7 +283,7 @@ const sendPlanUpgradeResult = async ({ adminEmail, adminName, orgName, requested
 };
 
 const sendWelcomeEmail = async ({ userEmail, userName, orgName, role, department, phone, password }) => {
-  const loginUrl = `${process.env.WEB_URL || 'http://localhost:5173'}/login`;
+  const loginUrl = `${process.env.FRONTEND_URL || 'http://localhost:5173'}/login`;
   const roleLabel = role.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
   await sendEmail({
     to: userEmail,
