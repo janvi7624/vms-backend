@@ -180,6 +180,7 @@ const requestWalkIn = async (req, res, next) => {
       visitorName, visitorEmail, visitorPhone, visitorCompany,
       employeeId, purpose = 'Walk-in visit',
       visitorPhoto, // base64 data-URI captured by Temi camera
+      serial, temiSerial, // which kiosk/robot the visitor is standing at
     } = req.body;
 
     if (!visitorName || !visitorEmail || !employeeId) {
@@ -194,6 +195,14 @@ const requestWalkIn = async (req, res, next) => {
     if (!employee) {
       return res.status(404).json({ error: 'Employee not found' });
     }
+
+    // Resolve which kiosk/robot the visitor is standing at, so the approver can
+    // see it and pick from that device's own saved locations.
+    const deviceSerial = (serial || temiSerial || '').trim().toUpperCase();
+    const device = deviceSerial
+      ? await TemiRobot.findOne({ where: { serial_number: deviceSerial }, attributes: ['id'], raw: true })
+      : null;
+    console.log(`[WalkIn] device resolution: serial=${JSON.stringify(serial)} temiSerial=${JSON.stringify(temiSerial)} deviceSerial=${JSON.stringify(deviceSerial)} matched=${device?.id ?? 'NONE'}`);
 
     // Find or create visitor; always sync name/company/phone so updates propagate everywhere
     let visitor;
@@ -259,6 +268,7 @@ const requestWalkIn = async (req, res, next) => {
       location_id:     employee.location_id,
       organization_id: employee.organization_id,
       visitor_photo:   savedPhotoUrl,
+      robot_id:        device?.id || null,
     });
 
     // Notify employee via socket

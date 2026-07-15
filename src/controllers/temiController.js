@@ -390,10 +390,25 @@ const getLinkCandidates = async (req, res, next) => {
     if (!robot) {
       const existing = await TemiRobot.findOne({
         where: { serial_number: serial },
-        attributes: { exclude: ['pending_org_id', 'link_status'] },
+        attributes: { exclude: ['pending_org_id'] },
         raw: true,
       });
       if (existing?.organization_id) {
+        // Robot was previously self-disconnected (still owned by this org) and is
+        // now checking in again — flip it back to "linked" and tell the admin dashboard.
+        if (existing.link_status && existing.link_status !== 'linked') {
+          await TemiRobot.update(
+            { link_status: 'linked', last_seen: new Date() },
+            { where: { serial_number: serial } }
+          );
+          if (io) {
+            io.to(`org:${existing.organization_id}`).emit('temi:link-approved', {
+              serial,
+              robotName:      existing.name,
+              organizationId: existing.organization_id,
+            });
+          }
+        }
         const org = await Organization.findByPk(existing.organization_id, {
           attributes: ['id', 'name', 'logo_url'], raw: true,
         });
@@ -445,11 +460,14 @@ const requestLinkApproval = async (req, res, next) => {
     });
     if (!org) return res.status(404).json({ error: 'Organization not found' });
 
-    // Directly link — no separate admin approval needed
+    // Directly link — no separate admin approval needed.
+    // Stamp last_seen now too, so the admin dashboard shows "Connected" the instant
+    // it links instead of waiting for the device's next heartbeat to land.
     await robot.update({
       organization_id: robot.pending_org_id,
       pending_org_id:  null,
       link_status:     'linked',
+      last_seen:       new Date(),
     });
 
     // Notify admin portal so it refreshes the robot list
@@ -470,6 +488,9 @@ const requestLinkApproval = async (req, res, next) => {
 };
 
 // POST /temi/self-unlink — Temi disconnects itself from its current org (Temi-auth required)
+// Mirrors the admin-side unlink (adminController.unlinkTemiRobot): the robot keeps its
+// organization_id and just flips to "disconnected" so it stays visible on the admin
+// dashboard instead of vanishing. Reconnecting (getLinkCandidates) flips it back to "linked".
 const selfUnlink = async (req, res, next) => {
   try {
     const { serial } = req.body;
@@ -483,9 +504,10 @@ const selfUnlink = async (req, res, next) => {
     const prevOrgId = robot.organization_id;
 
     try {
-      await robot.update({ organization_id: null, pending_org_id: null, link_status: 'unlinked' });
+      await robot.update({ pending_org_id: null, link_status: 'disconnected' });
     } catch {
-      // Migration not yet run — update only the original column
+      // Migration not yet run — no link_status column to preserve state in,
+      // so fall back to the old behavior of clearing the org link entirely.
       await TemiRobot.update(
         { organization_id: null },
         { where: { serial_number: serial.toUpperCase() } }

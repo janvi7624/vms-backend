@@ -1,5 +1,5 @@
 const { Op, col, literal } = require('sequelize');
-const { Visit, Visitor, User, QrCode, AuditLog } = require('../models');
+const { Visit, Visitor, User, QrCode, AuditLog, TemiRobot } = require('../models');
 const { sendOTPCode, sendVisitDeclined } = require('../services/emailService');
 const { notifyVisitApproved, notifyVisitDeclined, emitToVisit } = require('../services/notificationService');
 const { createOTPSession } = require('../services/otpService');
@@ -78,8 +78,17 @@ const getPendingApprovals = async (req, res, next) => {
       [col('visitor.company'),   'company'],
       [col('visitor.photo_url'), 'visitor_photo_url'],
       [col('visitor.photo_url'), 'photo_url'],
+      // Which kiosk/robot the visitor requested from, so the approver can see it
+      // and pick a room from that specific device's own saved locations.
+      [col('robot.name'),            'device_name'],
+      [col('robot.serial_number'),   'device_serial'],
+      [col('robot.saved_locations'), 'device_locations'],
+      [col('robot.current_task'),    'device_location'],
     ];
-    const include = [{ model: Visitor, as: 'visitor', attributes: [], required: true }];
+    const include = [
+      { model: Visitor,   as: 'visitor', attributes: [], required: true },
+      { model: TemiRobot, as: 'robot',   attributes: [], required: false },
+    ];
 
     if (isAdmin) {
       attributesInclude.push(

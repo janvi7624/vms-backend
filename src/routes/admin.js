@@ -6,7 +6,7 @@ const {
   getAllVisits, getAnalytics, getAuditLogs, getTemiRobots,
   getRobotStatus, getLocationHeatmap, getStaffActivity, getVisitFunnel,
   getFloorQueue, assignRobot, sendRobotCommand,
-  linkTemiRobot, unlinkTemiRobot, approveTemiLink, getSerialHistory, renameTemiRobot,
+  linkTemiRobot, unlinkTemiRobot, removeTemiRobot, approveTemiLink, getSerialHistory, renameTemiRobot,
   getSubscription, requestPlanUpgrade,
   getOrgLocations,
 } = require('../controllers/adminController');
@@ -37,6 +37,7 @@ router.get('/visit-funnel',     requireFeature('analytics'),     getVisitFunnel)
 // Temi robot linking & control (professional+)
 router.post('/temi-robots/link',                       requireFeature('robot_control'), linkTemiRobot);
 router.delete('/temi-robots/:serial/unlink',           requireFeature('robot_control'), unlinkTemiRobot);
+router.delete('/temi-robots/:serial',                  requireFeature('robot_control'), removeTemiRobot);
 router.post('/temi-robots/:serial/approve-link',       requireFeature('robot_control'), approveTemiLink);
 router.patch('/temi-robots/:serial/name',              requireFeature('robot_control'), renameTemiRobot);
 

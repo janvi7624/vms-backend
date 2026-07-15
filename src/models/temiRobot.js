@@ -12,7 +12,7 @@ module.exports = (sequelize, DataTypes) =>
     organization_id: DataTypes.UUID,
     pending_org_id:  { type: DataTypes.UUID, allowNull: true },
     link_status:     {
-      type: DataTypes.ENUM('unlinked', 'pending', 'linked'),
+      type: DataTypes.ENUM('unlinked', 'pending', 'linked', 'disconnected'),
       allowNull: false,
       defaultValue: 'unlinked',
     },

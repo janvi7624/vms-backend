@@ -662,11 +662,13 @@ const linkTemiRobot = async (req, res, next) => {
     });
 
     if (existing) {
-      if (existing.link_status === 'linked') {
-        if (existing.organization_id === orgId) {
-          return res.json({ ok: true, created: false, serial, message: `Robot ${serial} is already linked to your organisation.` });
-        }
+      // A robot keeps its organization_id even while "disconnected" (see unlinkTemiRobot),
+      // so it must stay off-limits to other orgs regardless of link_status.
+      if (existing.organization_id && existing.organization_id !== orgId) {
         return res.status(409).json({ error: 'This robot is already linked to another organisation.' });
+      }
+      if (existing.link_status === 'linked' && existing.organization_id === orgId) {
+        return res.json({ ok: true, created: false, serial, message: `Robot ${serial} is already linked to your organisation.` });
       }
       if (existing.link_status === 'pending' && existing.pending_org_id && existing.pending_org_id !== orgId) {
         return res.status(409).json({ error: 'This robot already has a pending link request from another organisation.' });
@@ -725,7 +727,9 @@ const approveTemiLink = async (req, res, next) => {
 
     const org = await Organization.findByPk(orgId, { attributes: ['name', 'logo_url'], raw: true });
 
-    await robot.update({ organization_id: orgId, pending_org_id: null, link_status: 'linked' });
+    // Stamp last_seen now too, so the dashboard shows "Connected" the instant the
+    // admin approves it instead of waiting for the device's next heartbeat to land.
+    await robot.update({ organization_id: orgId, pending_org_id: null, link_status: 'linked', last_seen: new Date() });
 
     emitToTemi(serial, 'temi:link-approved', {
       organizationId:   orgId,
@@ -748,7 +752,10 @@ const approveTemiLink = async (req, res, next) => {
 };
 
 // DELETE /admin/temi-robots/:serial/unlink
-// Removes the org association so another admin can claim the robot.
+// For a pending (never confirmed) request, cancelling frees the serial entirely.
+// For an actually-linked robot, "disconnecting" keeps it attributed to this org
+// and visible on the dashboard — it just flips to a "disconnected" status
+// instead of vanishing, since the admin may want to reconnect it later.
 const unlinkTemiRobot = async (req, res, next) => {
   try {
     const serial = req.params.serial?.toUpperCase();
@@ -761,8 +768,50 @@ const unlinkTemiRobot = async (req, res, next) => {
     });
     if (!robot) return res.status(404).json({ error: 'Robot not found in your organisation' });
 
-    await robot.update({ organization_id: null, pending_org_id: null, link_status: 'unlinked' });
-    res.json({ ok: true, message: `Robot ${serial} unlinked from your organisation.` });
+    if (robot.link_status === 'pending') {
+      await robot.update({ organization_id: null, pending_org_id: null, link_status: 'unlinked' });
+      return res.json({ ok: true, message: `Pending link request for ${serial} cancelled.` });
+    }
+
+    await robot.update({ pending_org_id: null, link_status: 'disconnected' });
+    res.json({ ok: true, message: `Robot ${serial} disconnected.` });
+  } catch (err) {
+    next(err);
+  }
+};
+
+// DELETE /admin/temi-robots/:serial
+// Permanently removes a device from the org's list. Unlike unlinkTemiRobot (which
+// only soft-disconnects and keeps the record so it can reconnect later), this is a
+// real delete — it frees the serial entirely for relinking anywhere. Admin-only, and
+// only allowed once the device is already disconnected, so nobody deletes a robot
+// that's still actively in use without disconnecting it first.
+const removeTemiRobot = async (req, res, next) => {
+  try {
+    const serial = req.params.serial?.toUpperCase();
+    const orgId  = req.user.organization_id;
+    const robot  = await TemiRobot.findOne({
+      where: {
+        serial_number: serial,
+        [Op.or]: [{ organization_id: orgId }, { pending_org_id: orgId }],
+      },
+    });
+    if (!robot) return res.status(404).json({ error: 'Robot not found in your organisation' });
+
+    if (robot.link_status === 'linked') {
+      return res.status(409).json({ error: 'Disconnect this device before removing it.' });
+    }
+
+    await AuditLog.create({
+      action:       'temi_robot_removed',
+      entity_type:  'temi_robot',
+      entity_id:    robot.id,
+      performed_by: req.user.id,
+      metadata:     { serial, orgId },
+    });
+
+    await robot.destroy();
+    res.json({ ok: true, message: `Robot ${serial} removed.` });
   } catch (err) {
     next(err);
   }
@@ -908,14 +957,18 @@ const getOrgLocations = async (req, res, next) => {
   try {
     const orgId = req.user.organization_id;
 
-    const robot = await TemiRobot.findOne({
+    const robots = await TemiRobot.findAll({
       where: { organization_id: orgId, link_status: 'linked' },
       attributes: ['saved_locations'],
       raw: true,
     });
+    // Prefer the first linked robot that actually has locations synced —
+    // an org can have several linked devices, and picking an arbitrary one
+    // (e.g. via findOne) can land on one with nothing synced yet.
+    const withLocations = robots.find(r => Array.isArray(r.saved_locations) && r.saved_locations.length);
 
-    if (robot?.saved_locations?.length) {
-      return res.json({ source: 'temi', locations: robot.saved_locations });
+    if (withLocations) {
+      return res.json({ source: 'temi', locations: withLocations.saved_locations });
     }
 
     const rooms = await Room.findAll({
@@ -937,7 +990,7 @@ module.exports = {
   getAllVisits, getAnalytics, getAuditLogs, getTemiRobots,
   getRobotStatus, getLocationHeatmap, getStaffActivity, getVisitFunnel,
   getFloorQueue, assignRobot, sendRobotCommand,
-  linkTemiRobot, unlinkTemiRobot, approveTemiLink, getSerialHistory, renameTemiRobot,
+  linkTemiRobot, unlinkTemiRobot, removeTemiRobot, approveTemiLink, getSerialHistory, renameTemiRobot,
   getSubscription, requestPlanUpgrade,
   getOrgLocations,
 };
