@@ -1,8 +1,8 @@
 const bcrypt = require('bcryptjs');
 const { Op, col, fn, literal } = require('sequelize');
-const { Branch, User, Visit, Visitor } = require('../models');
+const { Branch, User, Visit, Visitor, Organization } = require('../models');
 const { createOTPSession } = require('../services/otpService');
-const { sendOTPCode } = require('../services/emailService');
+const { sendOTPCode, sendWelcomeEmail } = require('../services/emailService');
 const { emitToAdmin } = require('../services/notificationService');
 const sms = require('../services/smsService');
 const { OTP } = require('../config/constants');
@@ -129,7 +129,10 @@ const createOrgEmployee = async (req, res, next) => {
       return res.status(400).json({ error: 'Invalid role' });
     }
 
-    const hash = await bcrypt.hash(password, 12);
+    const [hash, org] = await Promise.all([
+      bcrypt.hash(password, 12),
+      Organization.findByPk(orgId, { attributes: ['name'] }),
+    ]);
     const user = await User.create({
       email: email.toLowerCase(),
       password_hash: hash,
@@ -141,6 +144,16 @@ const createOrgEmployee = async (req, res, next) => {
       branch_id: branchId || null,
       organization_id: orgId,
     });
+
+    sendWelcomeEmail({
+      userEmail: user.email,
+      userName: user.name,
+      orgName: org?.name || 'Your Organization',
+      role,
+      department,
+      phone,
+      password,
+    }).catch(err => console.error('[Welcome Email]', err.message));
 
     res.status(201).json({
       id: user.id, email: user.email, name: user.name, role: user.role, department: user.department,

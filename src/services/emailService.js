@@ -282,8 +282,43 @@ const sendPlanUpgradeResult = async ({ adminEmail, adminName, orgName, requested
   });
 };
 
+const sendWelcomeEmail = async ({ userEmail, userName, orgName, role, department, phone, password }) => {
+  const loginUrl = `${process.env.WEB_URL || 'http://localhost:5173'}/login`;
+  const roleLabel = role.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+  await sendEmail({
+    to: userEmail,
+    subject: `Welcome to ${orgName} — Your Account Details`,
+    html: `
+      <div style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto;background:#f9f9f9;padding:20px;border-radius:8px">
+        <div style="background:#1a1a2e;padding:24px;border-radius:8px 8px 0 0;text-align:center">
+          <h1 style="color:#fff;margin:0;font-size:22px">Welcome to VisitIQ</h1>
+        </div>
+        <div style="background:#fff;padding:30px;border-radius:0 0 8px 8px">
+          <p>Dear <strong>${userName}</strong>,</p>
+          <p>Your account has been created. Here are your details:</p>
+          <table style="width:100%;border-collapse:collapse;margin:16px 0">
+            <tr><td style="padding:10px;background:#f5f5f5;font-weight:bold;width:40%">Organization</td><td style="padding:10px">${orgName}</td></tr>
+            <tr><td style="padding:10px;background:#f5f5f5;font-weight:bold">Role</td><td style="padding:10px">${roleLabel}</td></tr>
+            ${department ? `<tr><td style="padding:10px;background:#f5f5f5;font-weight:bold">Department</td><td style="padding:10px">${department}</td></tr>` : ''}
+            ${phone ? `<tr><td style="padding:10px;background:#f5f5f5;font-weight:bold">Phone</td><td style="padding:10px">${phone}</td></tr>` : ''}
+            <tr><td style="padding:10px;background:#f5f5f5;font-weight:bold">Email</td><td style="padding:10px">${userEmail}</td></tr>
+            <tr><td style="padding:10px;background:#f5f5f5;font-weight:bold">Password</td><td style="padding:10px;font-family:monospace;font-size:15px">${password}</td></tr>
+          </table>
+          <p style="color:#dc2626;font-size:13px">Please change your password after your first login.</p>
+          <div style="text-align:center;margin:24px 0">
+            <a href="${loginUrl}" style="background:#4f46e5;color:#fff;padding:14px 28px;border-radius:6px;text-decoration:none;font-weight:bold">
+              Log In Now
+            </a>
+          </div>
+          <p style="color:#666;font-size:12px">If you did not expect this email, please contact your administrator.</p>
+        </div>
+      </div>
+    `,
+  });
+};
+
 module.exports = {
   sendVisitorInvite, sendQRCode, sendVisitDeclined, sendApprovalNotification, sendOTPCode,
   sendOrgRegistrationConfirmation, sendOrgRegistrationToAdmin, sendOrgApprovalEmail, sendOrgRejectionEmail,
-  sendPlanUpgradeRequest, sendPlanUpgradeResult,
+  sendPlanUpgradeRequest, sendPlanUpgradeResult, sendWelcomeEmail,
 };

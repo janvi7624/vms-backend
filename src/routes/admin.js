@@ -2,7 +2,7 @@
 
 const router = require('express').Router();
 const {
-  getEmployees, createEmployee, updateEmployee, deleteEmployee,
+  getEmployees, createEmployee, updateEmployee, deleteEmployee, permanentDeleteEmployee,
   getAllVisits, getAnalytics, getAuditLogs, getTemiRobots,
   getRobotStatus, getLocationHeatmap, getStaffActivity, getVisitFunnel,
   getFloorQueue, assignRobot, sendRobotCommand,
@@ -20,7 +20,8 @@ router.use(authenticate, requireAdmin);
 router.get('/employees',        getEmployees);
 router.post('/employees',       createEmployee);
 router.put('/employees/:id',    updateEmployee);
-router.delete('/employees/:id', deleteEmployee);
+router.delete('/employees/:id',           deleteEmployee);
+router.delete('/employees/:id/permanent', permanentDeleteEmployee);
 
 router.get('/visits',           getAllVisits);
 router.get('/analytics',        requireFeature('analytics'), getAnalytics);

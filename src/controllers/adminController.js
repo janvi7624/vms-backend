@@ -4,6 +4,7 @@ const { User, Visit, Visitor, AuditLog, TemiRobot, Location, Organization, Room,
 const { canManage } = require('../middleware/roleCheck');
 const { emitAnalyticsUpdate, emitToTemi, emitToOrg } = require('../services/notificationService');
 const { SOCKET_EVENTS } = require('../config/constants');
+const { sendWelcomeEmail } = require('../services/emailService');
 
 let adminIo;
 const setAdminIo = (io) => { adminIo = io; };
@@ -62,9 +63,10 @@ const createEmployee = async (req, res, next) => {
       return res.status(403).json({ error: `You cannot create a user with role '${role}'` });
     }
 
+    const org = await Organization.findByPk(req.user.organization_id, { attributes: ['name', 'max_employees'] });
+
     // Enforce plan employee limit for staff roles
     if (['admin', 'sub_admin', 'employee'].includes(role)) {
-      const org = await Organization.findByPk(req.user.organization_id, { attributes: ['max_employees'] });
       if (org?.max_employees) {
         const currentCount = await User.count({
           where: {
@@ -108,6 +110,17 @@ const createEmployee = async (req, res, next) => {
       if (orgId) adminIo.to(`org:${orgId}`).emit(SOCKET_EVENTS.EMPLOYEE_CHANGED, { action: 'created', id: user.id, organizationId: orgId });
     }
     emitAnalyticsUpdate(orgId);
+
+    sendWelcomeEmail({
+      userEmail: user.email,
+      userName: user.name,
+      orgName: org?.name || 'Your Organization',
+      role,
+      department,
+      phone,
+      password,
+    }).catch(err => console.error('[Welcome Email]', err.message));
+
     res.status(201).json({
       id: user.id, email: user.email, name: user.name, role: user.role, department: user.department,
     });
@@ -159,7 +172,7 @@ const updateEmployee = async (req, res, next) => {
   }
 };
 
-// DELETE /admin/employees/:id — soft delete
+// DELETE /admin/employees/:id — soft delete (deactivate)
 const deleteEmployee = async (req, res, next) => {
   try {
     const where = { id: req.params.id };
@@ -181,6 +194,36 @@ const deleteEmployee = async (req, res, next) => {
     }
     emitAnalyticsUpdate(orgId);
     res.json({ message: 'Employee deactivated' });
+  } catch (err) {
+    next(err);
+  }
+};
+
+// DELETE /admin/employees/:id/permanent — hard delete (irreversible)
+const permanentDeleteEmployee = async (req, res, next) => {
+  try {
+    const where = { id: req.params.id };
+    if (req.user.organization_id) where.organization_id = req.user.organization_id;
+
+    const user = await User.findOne({ where });
+    if (!user) return res.status(404).json({ error: 'Employee not found' });
+
+    if (!canManage(req.user.role, user.role)) {
+      return res.status(403).json({ error: 'You do not have permission to delete this user' });
+    }
+
+    const orgId = req.user.organization_id;
+    const userId = user.id;
+    const userName = user.name;
+
+    await user.destroy();
+
+    if (adminIo) {
+      adminIo.to('admin').emit(SOCKET_EVENTS.EMPLOYEE_CHANGED, { action: 'permanently_deleted', id: userId, organizationId: orgId });
+      if (orgId) adminIo.to(`org:${orgId}`).emit(SOCKET_EVENTS.EMPLOYEE_CHANGED, { action: 'permanently_deleted', id: userId, organizationId: orgId });
+    }
+    emitAnalyticsUpdate(orgId);
+    res.json({ message: `${userName} permanently deleted` });
   } catch (err) {
     next(err);
   }
@@ -986,7 +1029,7 @@ const getOrgLocations = async (req, res, next) => {
 
 module.exports = {
   setAdminIo,
-  getEmployees, createEmployee, updateEmployee, deleteEmployee,
+  getEmployees, createEmployee, updateEmployee, deleteEmployee, permanentDeleteEmployee,
   getAllVisits, getAnalytics, getAuditLogs, getTemiRobots,
   getRobotStatus, getLocationHeatmap, getStaffActivity, getVisitFunnel,
   getFloorQueue, assignRobot, sendRobotCommand,

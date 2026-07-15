@@ -1,6 +1,7 @@
 const bcrypt = require('bcryptjs');
 const { Op, col, fn, literal } = require('sequelize');
 const { sequelize, Organization, User, Visit, TemiRobot, Branch, Location, AuditLog, Visitor } = require('../models');
+const { sendWelcomeEmail } = require('../services/emailService');
 
 const PLAN_PRICES = { standard: 49, professional: 149, enterprise: 499 };
 
@@ -451,7 +452,10 @@ const createPlatformUser = async (req, res, next) => {
     if (!email || !password || !organizationId) {
       return res.status(400).json({ error: 'email, password, organizationId are required' });
     }
-    const hash = await bcrypt.hash(password, 12);
+    const [hash, org] = await Promise.all([
+      bcrypt.hash(password, 12),
+      Organization.findByPk(organizationId, { attributes: ['name'] }),
+    ]);
     const user = await User.create({
       name: name || email.split('@')[0],
       email: email.toLowerCase(),
@@ -462,6 +466,17 @@ const createPlatformUser = async (req, res, next) => {
       department,
       is_active: true,
     });
+
+    sendWelcomeEmail({
+      userEmail: user.email,
+      userName: user.name,
+      orgName: org?.name || 'Your Organization',
+      role,
+      department,
+      phone,
+      password,
+    }).catch(err => console.error('[Welcome Email]', err.message));
+
     const safe = user.toJSON();
     delete safe.password_hash;
     res.status(201).json(safe);
