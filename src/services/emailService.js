@@ -23,7 +23,7 @@ const sendEmail = async ({ to, subject, html }) => {
     return;
   }
   await getTransporter().sendMail({
-    from: process.env.EMAIL_FROM || 'VisitIQ <noreply@visitiq.com>',
+    from: process.env.EMAIL_FROM || process.env.EMAIL_USER,
     to,
     subject,
     html,
