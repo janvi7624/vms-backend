@@ -2,53 +2,7 @@ const bcrypt = require('bcryptjs');
 const { Op, col, fn, literal } = require('sequelize');
 const { sequelize, Organization, User, Visit, TemiRobot, Branch, Location, AuditLog, Visitor } = require('../models');
 const { sendWelcomeEmail } = require('../services/emailService');
-
-const PLAN_PRICES = { standard: 49, professional: 149, enterprise: 499 };
-
-const PLAN_LIMITS = {
-  standard:     { emp: 50,  robots: 1  },
-  professional: { emp: 200, robots: 3  },
-  enterprise:   { emp: 500, robots: 10 },
-};
-
-const PLAN_FEATURES = {
-  standard: {
-    visitor_checkin:  true,
-    otp_verification: true,
-    walk_in_kiosk:    true,
-    rooms:            false,
-    analytics:        false,
-    robot_control:    false,
-    heatmaps:         false,
-    sub_admin:        false,
-    multi_branch:     false,
-    service_requests: false,
-  },
-  professional: {
-    visitor_checkin:  true,
-    otp_verification: true,
-    walk_in_kiosk:    true,
-    rooms:            true,
-    analytics:        true,
-    robot_control:    true,
-    heatmaps:         false,
-    sub_admin:        true,
-    multi_branch:     true,
-    service_requests: true,
-  },
-  enterprise: {
-    visitor_checkin:  true,
-    otp_verification: true,
-    walk_in_kiosk:    true,
-    rooms:            true,
-    analytics:        true,
-    robot_control:    true,
-    heatmaps:         true,
-    sub_admin:        true,
-    multi_branch:     true,
-    service_requests: true,
-  },
-};
+const { PLAN_ORDER, PLAN_PRICES, PLAN_LIMITS, PLAN_FEATURES, DEFAULT_PLAN } = require('../config/plans');
 
 const STAFF_ROLES = ['admin', 'sub_admin', 'employee'];
 
@@ -143,7 +97,7 @@ const createOrganization = async (req, res, next) => {
       return res.status(400).json({ error: 'name, slug, adminEmail, adminPassword are required' });
     }
 
-    const resolvedPlan = PLAN_LIMITS[plan] ? plan : 'standard';
+    const resolvedPlan = PLAN_LIMITS[plan] ? plan : DEFAULT_PLAN;
     const defaults = PLAN_LIMITS[resolvedPlan];
 
     const result = await sequelize.transaction(async (t) => {
@@ -383,7 +337,7 @@ const getPlatformBilling = async (req, res, next) => {
 
     const mrr = planDist.reduce((sum, r) => sum + (PLAN_PRICES[r.plan] || 0) * r.count, 0);
 
-    const dist = { standard: 0, professional: 0, enterprise: 0 };
+    const dist = Object.fromEntries(PLAN_ORDER.map((p) => [p, 0]));
     planDist.forEach((r) => { if (r.plan in dist) dist[r.plan] = r.count; });
 
     res.set('Cache-Control', 'no-store');
@@ -696,6 +650,8 @@ const deleteRobot = async (req, res, next) => {
 };
 
 module.exports = {
+  PLAN_ORDER,
+  PLAN_PRICES,
   PLAN_FEATURES,
   PLAN_LIMITS,
   listOrganizations, getOrganization, createOrganization, updateOrganization, deleteOrganization,

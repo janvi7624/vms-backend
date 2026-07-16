@@ -1,7 +1,7 @@
 const bcrypt = require('bcryptjs');
 const { sequelize, Organization, User } = require('../models');
 const { sendOrgRegistrationToAdmin, sendOrgRegistrationConfirmation, sendOrgApprovalEmail } = require('../services/emailService');
-const { PLAN_FEATURES, PLAN_LIMITS } = require('./platformController');
+const { PLAN_FEATURES, PLAN_LIMITS, PLAN_PRICES_STRIPE, DEFAULT_PLAN } = require('../config/plans');
 
 // Stripe is optional — only available when STRIPE_SECRET_KEY is set
 let stripe = null;
@@ -10,13 +10,6 @@ try {
     stripe = require('stripe')(process.env.STRIPE_SECRET_KEY);
   }
 } catch { /* stripe package not installed — payment UI will be disabled */ }
-
-const PLAN_PRICES_STRIPE = {
-  // Stripe price IDs — set in .env or fall back to raw amounts (in paise/cents)
-  standard:     { amount: 4900,  currency: 'usd', label: 'Standard Plan — $49/month' },
-  professional: { amount: 14900, currency: 'usd', label: 'Professional Plan — $149/month' },
-  enterprise:   { amount: 49900, currency: 'usd', label: 'Enterprise Plan — $499/month' },
-};
 
 /**
  * POST /api/public/organizations/register
@@ -76,11 +69,11 @@ const registerOrganization = async (req, res, next) => {
         industry: industry || null,
         status: 'pending_verification',
         is_active: false,
-        plan: PLAN_FEATURES[plan] ? plan : 'standard',
-        max_employees: PLAN_LIMITS[PLAN_FEATURES[plan] ? plan : 'standard'].emp,
-        max_robots: PLAN_LIMITS[PLAN_FEATURES[plan] ? plan : 'standard'].robots,
+        plan: PLAN_FEATURES[plan] ? plan : DEFAULT_PLAN,
+        max_employees: PLAN_LIMITS[PLAN_FEATURES[plan] ? plan : DEFAULT_PLAN].emp,
+        max_robots: PLAN_LIMITS[PLAN_FEATURES[plan] ? plan : DEFAULT_PLAN].robots,
         billing_email: orgEmail.toLowerCase(),
-        features: PLAN_FEATURES[PLAN_FEATURES[plan] ? plan : 'standard'],
+        features: PLAN_FEATURES[PLAN_FEATURES[plan] ? plan : DEFAULT_PLAN],
       }, { transaction: t });
 
       const hash = await bcrypt.hash(adminPassword, 12);
@@ -166,7 +159,7 @@ const createStripeCheckout = async (req, res, next) => {
     }
 
     const { orgId } = req.params;
-    const { plan = 'standard' } = req.body;
+    const { plan = DEFAULT_PLAN } = req.body;
 
     const org = await Organization.findByPk(orgId, {
       attributes: ['id', 'name', 'email', 'status'],
@@ -174,7 +167,7 @@ const createStripeCheckout = async (req, res, next) => {
     if (!org) return res.status(404).json({ error: 'Organization not found' });
     if (org.status === 'active') return res.status(400).json({ error: 'Organization is already active' });
 
-    const priceInfo = PLAN_PRICES_STRIPE[plan] || PLAN_PRICES_STRIPE.standard;
+    const priceInfo = PLAN_PRICES_STRIPE[plan] || PLAN_PRICES_STRIPE[DEFAULT_PLAN];
     const webUrl    = process.env.FRONTEND_URL || 'http://localhost:5173';
 
     const session = await stripe.checkout.sessions.create({
@@ -232,7 +225,7 @@ const stripeWebhook = async (req, res) => {
     const { orgId, plan } = session.metadata || {};
     if (orgId) {
       try {
-        const resolvedPlan = PLAN_FEATURES[plan] ? plan : 'standard';
+        const resolvedPlan = PLAN_FEATURES[plan] ? plan : DEFAULT_PLAN;
         await Organization.update(
           {
             plan:               resolvedPlan,

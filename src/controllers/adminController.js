@@ -939,7 +939,7 @@ const getSubscription = async (req, res, next) => {
 const requestPlanUpgrade = async (req, res, next) => {
   try {
     const { plan } = req.body;
-    const { PLAN_FEATURES, PLAN_LIMITS } = require('./platformController');
+    const { PLAN_FEATURES, PLAN_ORDER } = require('../config/plans');
 
     if (!PLAN_FEATURES[plan]) {
       return res.status(400).json({ error: `Invalid plan: ${plan}` });
@@ -954,8 +954,7 @@ const requestPlanUpgrade = async (req, res, next) => {
       return res.status(400).json({ error: 'Your organization is already on this plan.' });
     }
 
-    const planOrder = ['standard', 'professional', 'enterprise'];
-    if (planOrder.indexOf(plan) <= planOrder.indexOf(org.plan)) {
+    if (PLAN_ORDER.indexOf(plan) <= PLAN_ORDER.indexOf(org.plan)) {
       return res.status(400).json({ error: 'Downgrade requests must be handled by the super admin directly.' });
     }
 

@@ -10,7 +10,7 @@ module.exports = (sequelize, DataTypes) =>
     address: DataTypes.TEXT,
     phone: DataTypes.STRING(50),
     email: DataTypes.STRING(200),
-    plan: { type: DataTypes.STRING(50), defaultValue: 'standard' },
+    plan: { type: DataTypes.STRING(50), defaultValue: 'starter' },
     // 'active' (default for existing), 'pending_verification' (self-registered), 'rejected', 'suspended'
     status: { type: DataTypes.STRING(50), defaultValue: 'active' },
     is_active: { type: DataTypes.BOOLEAN, defaultValue: true },
