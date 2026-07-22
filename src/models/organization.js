@@ -20,6 +20,7 @@ module.exports = (sequelize, DataTypes) =>
     max_employees: { type: DataTypes.INTEGER, defaultValue: 100 },
     subscription_start: DataTypes.DATEONLY,
     subscription_end: DataTypes.DATEONLY,
+    trial_ends_at: DataTypes.DATE,
     billing_email: DataTypes.STRING(200),
     max_robots: { type: DataTypes.INTEGER, defaultValue: 2 },
     features: { type: DataTypes.JSONB, defaultValue: {} },

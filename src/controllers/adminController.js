@@ -925,7 +925,7 @@ const getSubscription = async (req, res, next) => {
   try {
     const org = await Organization.findByPk(req.user.organization_id, {
       attributes: ['id', 'name', 'plan', 'features', 'max_employees', 'max_robots',
-        'subscription_start', 'subscription_end', 'pending_plan', 'pending_plan_requested_at'],
+        'subscription_start', 'subscription_end', 'trial_ends_at', 'pending_plan', 'pending_plan_requested_at'],
     });
     if (!org) return res.status(404).json({ error: 'Organization not found' });
     res.json(org.toJSON());

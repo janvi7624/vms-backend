@@ -191,12 +191,19 @@ const approveOrganization = async (req, res, next) => {
     const org = await Organization.findByPk(req.params.id);
     if (!org) return res.status(404).json({ error: 'Organization not found' });
 
+    // Orgs that already paid via Stripe checkout have subscription_start set
+    // before approval — only start the free trial clock for everyone else.
+    const trialFields = org.subscription_start
+      ? {}
+      : { trial_ends_at: new Date(Date.now() + 14 * 24 * 60 * 60 * 1000) };
+
     await org.update({
       status: 'active',
       is_active: true,
       verified_by: req.user.id,
       verified_at: new Date(),
       rejection_reason: null,
+      ...trialFields,
     });
 
     // Activate the org's admin user(s)
