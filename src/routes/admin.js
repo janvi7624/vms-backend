@@ -2,7 +2,7 @@
 
 const router = require('express').Router();
 const {
-  getEmployees, createEmployee, updateEmployee, deleteEmployee, permanentDeleteEmployee,
+  getEmployees, createEmployee, bulkImportEmployees, updateEmployee, deleteEmployee, permanentDeleteEmployee,
   getAllVisits, getAnalytics, getAuditLogs, getTemiRobots,
   getRobotStatus, getLocationHeatmap, getStaffActivity, getVisitFunnel,
   getFloorQueue, assignRobot, sendRobotCommand,
@@ -14,11 +14,13 @@ const { getRooms, createRoom, updateRoom, deleteRoom } = require('../controllers
 const { authenticate } = require('../middleware/auth');
 const { requireAdmin } = require('../middleware/roleCheck');
 const requireFeature = require('../middleware/requireFeature');
+const uploadSpreadsheet = require('../middleware/uploadSpreadsheet');
 
 router.use(authenticate, requireAdmin);
 
 router.get('/employees',        getEmployees);
 router.post('/employees',       createEmployee);
+router.post('/employees/bulk-import', uploadSpreadsheet.single('file'), bulkImportEmployees);
 router.put('/employees/:id',    updateEmployee);
 router.delete('/employees/:id',           deleteEmployee);
 router.delete('/employees/:id/permanent', permanentDeleteEmployee);

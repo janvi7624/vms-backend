@@ -129,6 +129,143 @@ const createEmployee = async (req, res, next) => {
   }
 };
 
+const VALID_EMPLOYEE_ROLES = ['admin', 'sub_admin', 'employee', 'receptionist', 'client'];
+const STAFF_ROLES = ['admin', 'sub_admin', 'employee'];
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+const readField = (row, ...keys) => {
+  for (const k of keys) {
+    if (row[k] !== undefined && row[k] !== null && String(row[k]).trim() !== '') return String(row[k]).trim();
+  }
+  return '';
+};
+
+// POST /admin/employees/bulk-import — parses an uploaded .csv/.xlsx and creates
+// one employee per row, matching the same rules as createEmployee above.
+// Missing password defaults to "<Name>@123", missing phone to "+919999999999".
+// Every row either succeeds or is reported back with the reason it failed —
+// nothing throws the whole import out for one bad row.
+const bulkImportEmployees = async (req, res, next) => {
+  try {
+    if (!req.file) return res.status(400).json({ error: 'No file uploaded' });
+
+    const XLSX = require('xlsx');
+    let rows;
+    try {
+      const wb = XLSX.read(req.file.buffer, { type: 'buffer' });
+      const sheet = wb.Sheets[wb.SheetNames[0]];
+      // raw: false forces every cell to its displayed-text form — without it,
+      // numeric-looking phone numbers (e.g. "+919876543210") get silently
+      // coerced to JS numbers and lose their leading "+".
+      rows = XLSX.utils.sheet_to_json(sheet, { defval: '', raw: false });
+    } catch {
+      return res.status(400).json({ error: 'Could not read the file. Please use the provided template format.' });
+    }
+
+    if (!rows.length) return res.status(400).json({ error: 'The file has no employee rows' });
+    if (rows.length > 500) return res.status(400).json({ error: 'Please import at most 500 employees at a time' });
+
+    const org = await Organization.findByPk(req.user.organization_id, { attributes: ['name', 'max_employees'] });
+    let staffCount = null;
+    const getStaffCount = async () => {
+      if (staffCount === null) {
+        staffCount = await User.count({
+          where: { organization_id: req.user.organization_id, role: { [Op.in]: STAFF_ROLES }, is_active: true },
+        });
+      }
+      return staffCount;
+    };
+
+    const added = [];
+    const failed = [];
+    const seenEmails = new Set();
+
+    for (let i = 0; i < rows.length; i++) {
+      const row = rows[i];
+      const rowNum = i + 2; // row 1 is the header
+      const name = readField(row, 'name', 'Name');
+      const email = readField(row, 'email', 'Email').toLowerCase();
+      const roleInput = readField(row, 'role', 'Role').toLowerCase();
+      const department = readField(row, 'department', 'Department') || null;
+      const deskLocation = readField(row, 'deskLocation', 'Desk Location', 'desk_location') || null;
+      let phone = readField(row, 'phone', 'Phone');
+      let password = readField(row, 'password', 'Password');
+
+      const label = name || email || `Row ${rowNum}`;
+      const fail = (reason) => { failed.push({ row: rowNum, name: label, email, reason }); };
+
+      if (!name)  { fail('Name is required'); continue; }
+      if (!email) { fail('Email is required'); continue; }
+      if (!EMAIL_RE.test(email)) { fail('Invalid email format'); continue; }
+      if (seenEmails.has(email)) { fail('Duplicate email in file'); continue; }
+      if (!roleInput) { fail('Role is required'); continue; }
+      if (!VALID_EMPLOYEE_ROLES.includes(roleInput)) {
+        fail(`Invalid role '${row.role ?? row.Role}' — must be one of ${VALID_EMPLOYEE_ROLES.join(', ')}`);
+        continue;
+      }
+      if (!canManage(req.user.role, roleInput)) { fail(`You cannot create role '${roleInput}'`); continue; }
+
+      const existing = await User.findOne({ where: { email } });
+      if (existing) { fail('Email already registered'); continue; }
+
+      if (STAFF_ROLES.includes(roleInput) && org?.max_employees) {
+        const count = await getStaffCount();
+        if (count >= org.max_employees) {
+          fail(`Employee limit reached (${org.max_employees}). Please upgrade your plan.`);
+          continue;
+        }
+      }
+
+      if (!phone) phone = '+919999999999';
+      if (!password) password = `${name.replace(/\s+/g, '')}@123`;
+
+      try {
+        const hash = await bcrypt.hash(password, 12);
+        const user = await User.create({
+          email, password_hash: hash, name, role: roleInput, department, phone,
+          desk_location: deskLocation, organization_id: req.user.organization_id,
+        });
+
+        await AuditLog.create({
+          action: 'create_user',
+          entity_type: 'user',
+          entity_id: user.id,
+          performed_by: req.user.id,
+          metadata: { email, role: roleInput, source: 'bulk_import' },
+        });
+
+        seenEmails.add(email);
+        if (STAFF_ROLES.includes(roleInput)) staffCount = (staffCount ?? 0) + 1;
+
+        sendWelcomeEmail({
+          userEmail: email,
+          userName: name,
+          orgName: org?.name || 'Your Organization',
+          role: roleInput,
+          department,
+          phone,
+          password,
+        }).catch(err => console.error('[Bulk Import Welcome Email]', err.message));
+
+        added.push({ row: rowNum, name, email, role: roleInput });
+      } catch (err) {
+        fail(err.message || 'Failed to create user');
+      }
+    }
+
+    const orgId = req.user.organization_id;
+    if (added.length && adminIo) {
+      adminIo.to('admin').emit(SOCKET_EVENTS.EMPLOYEE_CHANGED, { action: 'bulk_created', organizationId: orgId });
+      if (orgId) adminIo.to(`org:${orgId}`).emit(SOCKET_EVENTS.EMPLOYEE_CHANGED, { action: 'bulk_created', organizationId: orgId });
+    }
+    if (added.length) emitAnalyticsUpdate(orgId);
+
+    res.json({ totalRows: rows.length, added, failed });
+  } catch (err) {
+    next(err);
+  }
+};
+
 // PUT /admin/employees/:id
 const updateEmployee = async (req, res, next) => {
   try {
@@ -1028,7 +1165,7 @@ const getOrgLocations = async (req, res, next) => {
 
 module.exports = {
   setAdminIo,
-  getEmployees, createEmployee, updateEmployee, deleteEmployee, permanentDeleteEmployee,
+  getEmployees, createEmployee, bulkImportEmployees, updateEmployee, deleteEmployee, permanentDeleteEmployee,
   getAllVisits, getAnalytics, getAuditLogs, getTemiRobots,
   getRobotStatus, getLocationHeatmap, getStaffActivity, getVisitFunnel,
   getFloorQueue, assignRobot, sendRobotCommand,
