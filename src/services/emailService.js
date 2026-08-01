@@ -114,6 +114,14 @@ const sendApprovalNotification = async ({ employeeEmail, employeeName, visitorNa
   });
 };
 
+// Expresses a minute count naturally (e.g. "10 minutes" vs "24 hours") — used
+// instead of raw minute counts once EXPIRY_MINUTES covers a whole day.
+function formatDuration(minutes) {
+  if (minutes < 60) return `${minutes} minute${minutes !== 1 ? 's' : ''}`;
+  const hours = Math.round(minutes / 60);
+  return `${hours} hour${hours !== 1 ? 's' : ''}`;
+}
+
 const sendOTPCode = async ({ visitorEmail, visitorName, otp, expiresMinutes = 10, visitDate, hostName }) => {
   await sendEmail({
     to: visitorEmail,
@@ -131,7 +139,7 @@ const sendOTPCode = async ({ visitorEmail, visitorName, otp, expiresMinutes = 10
             <p style="color:#aaa;margin:0 0 8px 0;font-size:12px;letter-spacing:2px;text-transform:uppercase">Your One-Time Password</p>
             <p style="color:#fff;font-size:48px;font-weight:bold;letter-spacing:12px;margin:0;font-family:monospace">${otp}</p>
           </div>
-          <p style="color:#dc2626;font-size:13px">This OTP expires in <strong>${expiresMinutes} minutes</strong>. Do not share it.</p>
+          <p style="color:#dc2626;font-size:13px">This OTP expires in <strong>${formatDuration(expiresMinutes)}</strong>. Do not share it.</p>
           <p style="color:#666;font-size:12px;margin-top:24px">If you did not request this visit, please ignore this email.</p>
         </div>
       </div>

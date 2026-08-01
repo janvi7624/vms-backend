@@ -37,13 +37,21 @@ async function sendSms(to, body) {
   }
 }
 
+// Expresses a minute count naturally (e.g. "10 minutes" vs "24 hours") — used
+// instead of raw minute counts once EXPIRY_MINUTES covers a whole day.
+function formatDuration(minutes) {
+  if (minutes < 60) return `${minutes} minute${minutes !== 1 ? 's' : ''}`;
+  const hours = Math.round(minutes / 60);
+  return `${hours} hour${hours !== 1 ? 's' : ''}`;
+}
+
 // ── Customise your SMS message here ───────────────────────────────────────────
 // Available variables: visitorName, otp, expiresMinutes
 function buildOtpMessage({ visitorName, otp, expiresMinutes }) {
   return (
     `Hello ${visitorName}!\n` +
     `Your Visitor Check-In OTP is: *${otp}*\n` +
-    `Valid for ${expiresMinutes} minutes only.\n` +
+    `Valid for ${formatDuration(expiresMinutes)} only.\n` +
     `Please enter this OTP at the reception kiosk.\n` +
     `Do NOT share this OTP with anyone.\n` +
     `- VisitIQ`

@@ -39,7 +39,7 @@ module.exports = {
   },
   OTP: {
     LENGTH:           6,
-    EXPIRY_MINUTES:   10,
+    EXPIRY_MINUTES:   1440, // 24h — valid for the whole day it was issued
     MAX_ATTEMPTS:     3,
   },
   // QR kept for backward compat with existing pre-planned visits

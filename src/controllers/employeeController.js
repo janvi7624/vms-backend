@@ -203,6 +203,7 @@ const approveVisit = async (req, res, next) => {
           visitorName,
           otp,
           hostName: req.user.name,
+          expiresMinutes: OTP.EXPIRY_MINUTES,
         }).catch((e) => console.error('OTP email error:', e.message));
         await sms.sendOtpSms({ visitorPhone, visitorName, otp, expiresMinutes: OTP.EXPIRY_MINUTES })
           .catch((e) => console.error('[Approve] SMS error (non-fatal):', e.message));

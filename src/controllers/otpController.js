@@ -53,6 +53,7 @@ const sendOTP = async (req, res, next) => {
       otp,
       hostName: visit.host?.name,
       visitDate: visit.scheduled_at || visit.created_at,
+      expiresMinutes: OTP.EXPIRY_MINUTES,
     }).catch((e) => console.error('[OTP] Email error (non-fatal):', e.message));
 
     const visitorPhone = visit.visitor?.phone;

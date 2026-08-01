@@ -229,6 +229,7 @@ const submitVisitorForm = async (req, res, next) => {
         visitorName: fullName,
         otp,
         visitDate: visit.scheduled_at,
+        expiresMinutes: OTP.EXPIRY_MINUTES,
       }).catch((e) => console.error('OTP email error:', e.message));
       await sms.sendOtpSms({ visitorPhone, visitorName: fullName, otp, expiresMinutes: OTP.EXPIRY_MINUTES })
         .catch((e) => console.error('[PrePlanned] SMS error (non-fatal):', e.message));

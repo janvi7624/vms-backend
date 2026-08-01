@@ -20,12 +20,10 @@
  */
 
 const { Op } = require('sequelize');
-const { sequelize, Organization, User, Visit, Visitor, AuditLog } = require('../models');
-const { VISIT_STATUS, OTP } = require('../config/constants');
-const { sendOTPCode } = require('../services/emailService');
-const { notifyVisitApproved, emitToVisit } = require('../services/notificationService');
-const { createOTPSession } = require('../services/otpService');
-const sms = require('../services/smsService');
+const { sequelize, Organization, User, Visit, Visitor } = require('../models');
+const { VISIT_STATUS } = require('../config/constants');
+const { sendApprovalNotification } = require('../services/emailService');
+const { notifyVisitRequest } = require('../services/notificationService');
 
 // Roles that can be a visit host — used by the personal-link booking flow below.
 const HOST_ROLES = ['employee', 'sub_admin', 'admin'];
@@ -304,7 +302,11 @@ const getHostBookingInfo = async (req, res, next) => {
   }
 };
 
-// POST /public/visits/direct-book — creates the visit already approved
+// POST /public/visits/direct-book — org + host are pre-resolved from the
+// shared link (visitor never searches/picks either), but the visit still
+// goes into the host's normal pending-approval queue — same as any other
+// impromptu visit request. OTP is only generated once the host approves it
+// via the existing POST /employee/approve endpoint (employeeController.js).
 const createDirectBooking = async (req, res, next) => {
   try {
     const { hostId, visitorName, visitorEmail, visitorPhone, purpose, scheduledAt } = req.body;
@@ -318,7 +320,7 @@ const createDirectBooking = async (req, res, next) => {
 
     const host = await User.findOne({
       where: { id: hostId, role: { [Op.in]: HOST_ROLES }, is_active: true },
-      attributes: ['id', 'name', 'organization_id', 'temi_user_id'],
+      attributes: ['id', 'name', 'email', 'organization_id'],
     });
     if (!host) return res.status(404).json({ error: 'This booking link is invalid or no longer active' });
 
@@ -349,66 +351,36 @@ const createDirectBooking = async (req, res, next) => {
       host_employee_id:  host.id,
       visit_type:        'impromptu',
       purpose,
-      status:             VISIT_STATUS.APPROVED,
+      status:             VISIT_STATUS.PENDING,
       organization_id:    org.id,
       booking_source:     'self_service',
       scheduled_at:        scheduledAt ? new Date(scheduledAt) : null,
-      approved_by:         host.id,
-      approved_at:         new Date(),
-      meeting_type:        'in_person',
     });
 
-    // Generate OTP and send via email + SMS — same as the manual-approval path
-    let otpSent = false;
-    if (visitor.email) {
-      const { otp } = await createOTPSession({
-        visitId: visit.id,
-        email: visitor.email,
-        organizationId: org.id,
-      });
-      await sendOTPCode({
-        visitorEmail: visitor.email,
-        visitorName:  visitor.name,
-        otp,
-        hostName: host.name,
-      }).catch((e) => console.error('[DirectBooking] OTP email error:', e.message));
-      await sms.sendOtpSms({ visitorPhone: visitor.phone, visitorName: visitor.name, otp, expiresMinutes: OTP.EXPIRY_MINUTES })
-        .catch((e) => console.error('[DirectBooking] SMS error (non-fatal):', e.message));
-      otpSent = true;
-    }
-
-    await notifyVisitApproved({
-      employeeId: host.id,
-      visitId: visit.id,
-      visitorName: visitor.name,
+    // Notify the host (+ org admins) — mirrors createImpromptu in visitorController.js
+    await notifyVisitRequest({
+      employeeId:     host.id,
       organizationId: org.id,
-      meetingRoom: null,
-    });
+      employeeName:   host.name,
+      visitId:        visit.id,
+      visitorName:    visitor.name,
+    }).catch((e) => console.error('[DirectBooking] Notification error (non-fatal):', e.message));
 
-    emitToVisit(visit.id, 'visit:approved', {
-      visitId: visit.id,
-      otpSent,
-      meetingRoom: null,
-      meetingType: 'in_person',
-      virtualMeetingUrl: null,
-      hostTemiUserId: host.temi_user_id || null,
-    });
-
-    await AuditLog.create({
-      action: 'approve_visit',
-      entity_type: 'visit',
-      entity_id: visit.id,
-      performed_by: host.id,
-      metadata: { visitorName: visitor.name, meetingType: 'in_person', autoApproved: true, source: 'direct_link' },
-    });
+    if (host.email) {
+      await sendApprovalNotification({
+        employeeEmail: host.email,
+        employeeName:  host.name,
+        visitorName:   visitor.name,
+        visitPurpose:  purpose,
+      }).catch((e) => console.error('[DirectBooking] Email error (non-fatal):', e.message));
+    }
 
     res.status(201).json({
       visitId: visit.id,
       status: visit.status,
       hostName: host.name,
       organizationName: org.name,
-      otpSent,
-      message: 'Visit approved instantly. OTP sent to visitor email.',
+      message: 'Visit request sent. Awaiting approval.',
     });
   } catch (err) {
     next(err);
