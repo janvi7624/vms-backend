@@ -20,8 +20,15 @@
  */
 
 const { Op } = require('sequelize');
-const { sequelize, Organization, User, Visit, Visitor } = require('../models');
-const { VISIT_STATUS } = require('../config/constants');
+const { sequelize, Organization, User, Visit, Visitor, AuditLog } = require('../models');
+const { VISIT_STATUS, OTP } = require('../config/constants');
+const { sendOTPCode } = require('../services/emailService');
+const { notifyVisitApproved, emitToVisit } = require('../services/notificationService');
+const { createOTPSession } = require('../services/otpService');
+const sms = require('../services/smsService');
+
+// Roles that can be a visit host — used by the personal-link booking flow below.
+const HOST_ROLES = ['employee', 'sub_admin', 'admin'];
 
 let _io;
 const setBookingIo = (io) => { _io = io; };
@@ -262,4 +269,153 @@ const listOrgEmployees = async (req, res, next) => {
   }
 };
 
-module.exports = { createBookRequest, getBookingStatus, selectEmployee, listOrgEmployees, setBookingIo };
+// ── Personal-link booking ──────────────────────────────────────────────────────
+// A staff member (employee/sub_admin/admin) can share /book-visit?hostId=<their id>.
+// Opening that link resolves their org so the visitor skips org search entirely,
+// and submitting the form auto-approves the visit — no admin/sub-admin queue —
+// since the host implicitly vouched for the visitor by sharing their own link.
+
+// GET /public/host/:hostId/booking-info — resolves host + org for auto-select
+const getHostBookingInfo = async (req, res, next) => {
+  try {
+    const host = await User.findOne({
+      where: { id: req.params.hostId, role: { [Op.in]: HOST_ROLES }, is_active: true },
+      attributes: ['id', 'name', 'department', 'organization_id'],
+    });
+    if (!host) return res.status(404).json({ error: 'This booking link is invalid or no longer active' });
+
+    const org = await Organization.findOne({
+      where: { id: host.organization_id, status: 'active', is_active: true },
+      attributes: ['id', 'name', 'logo_url', 'industry'],
+    });
+    if (!org) return res.status(404).json({ error: 'This booking link is invalid or no longer active' });
+
+    res.json({
+      hostId:          host.id,
+      hostName:        host.name,
+      hostDepartment:  host.department,
+      organizationId:  org.id,
+      organizationName: org.name,
+      organizationLogo: org.logo_url,
+      organizationIndustry: org.industry,
+    });
+  } catch (err) {
+    next(err);
+  }
+};
+
+// POST /public/visits/direct-book — creates the visit already approved
+const createDirectBooking = async (req, res, next) => {
+  try {
+    const { hostId, visitorName, visitorEmail, visitorPhone, purpose, scheduledAt } = req.body;
+
+    if (!hostId || !visitorName || !visitorEmail || !purpose) {
+      return res.status(400).json({ error: 'hostId, visitorName, visitorEmail and purpose are required' });
+    }
+    if (!/\S+@\S+\.\S+/.test(visitorEmail)) {
+      return res.status(400).json({ error: 'Invalid email address' });
+    }
+
+    const host = await User.findOne({
+      where: { id: hostId, role: { [Op.in]: HOST_ROLES }, is_active: true },
+      attributes: ['id', 'name', 'organization_id', 'temi_user_id'],
+    });
+    if (!host) return res.status(404).json({ error: 'This booking link is invalid or no longer active' });
+
+    const org = await Organization.findOne({
+      where: { id: host.organization_id, status: 'active', is_active: true },
+      attributes: ['id', 'name'],
+    });
+    if (!org) return res.status(404).json({ error: 'This booking link is invalid or no longer active' });
+
+    // Find or create visitor — same pattern as the general booking flow above
+    let visitor = await Visitor.findOne({ where: { email: visitorEmail.toLowerCase() } });
+    if (visitor) {
+      const updates = {};
+      if (visitorName && visitorName !== visitor.name) updates.name = visitorName;
+      if (visitorPhone && visitorPhone !== visitor.phone) updates.phone = visitorPhone;
+      if (Object.keys(updates).length) await visitor.update(updates);
+    } else {
+      visitor = await Visitor.create({
+        name:            visitorName,
+        email:           visitorEmail.toLowerCase(),
+        phone:           visitorPhone || null,
+        organization_id: org.id,
+      });
+    }
+
+    const visit = await Visit.create({
+      visitor_id:        visitor.id,
+      host_employee_id:  host.id,
+      visit_type:        'impromptu',
+      purpose,
+      status:             VISIT_STATUS.APPROVED,
+      organization_id:    org.id,
+      booking_source:     'self_service',
+      scheduled_at:        scheduledAt ? new Date(scheduledAt) : null,
+      approved_by:         host.id,
+      approved_at:         new Date(),
+      meeting_type:        'in_person',
+    });
+
+    // Generate OTP and send via email + SMS — same as the manual-approval path
+    let otpSent = false;
+    if (visitor.email) {
+      const { otp } = await createOTPSession({
+        visitId: visit.id,
+        email: visitor.email,
+        organizationId: org.id,
+      });
+      await sendOTPCode({
+        visitorEmail: visitor.email,
+        visitorName:  visitor.name,
+        otp,
+        hostName: host.name,
+      }).catch((e) => console.error('[DirectBooking] OTP email error:', e.message));
+      await sms.sendOtpSms({ visitorPhone: visitor.phone, visitorName: visitor.name, otp, expiresMinutes: OTP.EXPIRY_MINUTES })
+        .catch((e) => console.error('[DirectBooking] SMS error (non-fatal):', e.message));
+      otpSent = true;
+    }
+
+    await notifyVisitApproved({
+      employeeId: host.id,
+      visitId: visit.id,
+      visitorName: visitor.name,
+      organizationId: org.id,
+      meetingRoom: null,
+    });
+
+    emitToVisit(visit.id, 'visit:approved', {
+      visitId: visit.id,
+      otpSent,
+      meetingRoom: null,
+      meetingType: 'in_person',
+      virtualMeetingUrl: null,
+      hostTemiUserId: host.temi_user_id || null,
+    });
+
+    await AuditLog.create({
+      action: 'approve_visit',
+      entity_type: 'visit',
+      entity_id: visit.id,
+      performed_by: host.id,
+      metadata: { visitorName: visitor.name, meetingType: 'in_person', autoApproved: true, source: 'direct_link' },
+    });
+
+    res.status(201).json({
+      visitId: visit.id,
+      status: visit.status,
+      hostName: host.name,
+      organizationName: org.name,
+      otpSent,
+      message: 'Visit approved instantly. OTP sent to visitor email.',
+    });
+  } catch (err) {
+    next(err);
+  }
+};
+
+module.exports = {
+  createBookRequest, getBookingStatus, selectEmployee, listOrgEmployees, setBookingIo,
+  getHostBookingInfo, createDirectBooking,
+};
