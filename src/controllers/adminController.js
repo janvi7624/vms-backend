@@ -1129,35 +1129,61 @@ const requestPlanUpgrade = async (req, res, next) => {
 };
 
 // GET /admin/locations
-// Returns this org's navigation destinations:
-//   • If a linked Temi has saved locations → return those (source: 'temi')
-//   • Otherwise → return the org's Rooms (source: 'rooms')
+// Returns this org's navigation destinations: the union of every linked
+// Temi's synced rooms, every linked kiosk's synced rooms (kiosks are just
+// TemiRobot rows with a KIOSK- serial), and every Room added in Room
+// Management.
+//   • `locations` — flat, deduplicated string[] (unchanged shape, existing
+//     consumers like NewVisit.jsx / VirtualMeetModal.jsx keep working as-is)
+//   • `detailed`  — richer array with { name, deviceName, deviceType } so
+//     UIs that need to show which device a room came from (e.g. the visit
+//     approval room picker) can label each option — not deduplicated across
+//     devices, so the same room name synced on two devices shows twice with
+//     each device's name beside it.
+//
+// Always returns every linked device's rooms regardless of live online
+// status — a device being briefly offline shouldn't block a visit request
+// from getting a room, so `connectedOnly` no longer restricts the result;
+// every consumer (visit-approval picker, Room Management, NewVisit,
+// VirtualMeetModal) sees the same full list of the org's rooms.
 const getOrgLocations = async (req, res, next) => {
   try {
     const orgId = req.user.organization_id;
 
     const robots = await TemiRobot.findAll({
-      where: { organization_id: orgId, link_status: 'linked' },
-      attributes: ['saved_locations'],
+      where: { organization_id: orgId },
+      attributes: ['name', 'serial_number', 'saved_locations'],
       raw: true,
     });
-    // Prefer the first linked robot that actually has locations synced —
-    // an org can have several linked devices, and picking an arbitrary one
-    // (e.g. via findOne) can land on one with nothing synced yet.
-    const withLocations = robots.find(r => Array.isArray(r.saved_locations) && r.saved_locations.length);
+    // saved_locations entries can be plain strings or { name } objects
+    // depending on when they were synced — normalize both to strings.
+    const normalizeLoc = (loc) => (typeof loc === 'string' ? loc : loc?.name ?? String(loc));
 
-    if (withLocations) {
-      return res.json({ source: 'temi', locations: withLocations.saved_locations });
-    }
+    const deviceEntries = robots.flatMap((r) => {
+      const isKiosk = /^KIOSK-/i.test(r.serial_number || '');
+      console.log(r.serial_number);
+      
+      const deviceName = r.name || r.serial_number || (isKiosk ? 'Kiosk' : 'Walkie');
+      return (Array.isArray(r.saved_locations) ? r.saved_locations : []).map((loc) => ({
+        name: normalizeLoc(loc),
+        deviceName,
+        deviceType: isKiosk ? 'kiosk' : 'temi',
+      }));
+    });
+console.log(robots,"<====robots");
 
     const rooms = await Room.findAll({
-      where: { organization_id: orgId },
+      where: { organization_id: orgId, is_active: true },
       attributes: ['name'],
       order: [['name', 'ASC']],
       raw: true,
     });
+    const roomEntries = rooms.map((r) => ({ name: r.name, deviceName: null, deviceType: 'room' }));
 
-    return res.json({ source: 'rooms', locations: rooms.map(r => r.name) });
+    const detailed = [...deviceEntries, ...roomEntries];
+    const locations = [...new Set(detailed.map((d) => d.name))];
+
+    return res.json({ locations, detailed });
   } catch (err) {
     next(err);
   }

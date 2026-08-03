@@ -154,11 +154,17 @@ const approveVisit = async (req, res, next) => {
         return res.status(403).json({ error: 'Only admins or sub-admins can action this visit' });
       }
       if (action === 'approve') {
-        await visit.update({
+        const subAdminUpdate = {
           status:                  VISIT_STATUS.PENDING_EMPLOYEE_SELECTION,
           sub_admin_approved_by:   req.user.id,
           sub_admin_approved_at:   new Date(),
-        });
+        };
+        // Room picked here (from Room Management or a connected device's
+        // synced locations) carries through as the default — the employee's
+        // final approval still shows it and can change it before Walkie navigates.
+        if (meetingRoomId) subAdminUpdate.meeting_room_id = meetingRoomId;
+        if (meetingRoom)   subAdminUpdate.meeting_room    = meetingRoom;
+        await visit.update(subAdminUpdate);
         return res.json({ message: 'Approved. Visitor will now select an employee.' });
       } else {
         await visit.update({ status: VISIT_STATUS.DECLINED, declined_reason: declineReason || null });

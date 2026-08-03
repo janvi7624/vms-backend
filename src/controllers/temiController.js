@@ -1,5 +1,5 @@
-const { col } = require('sequelize');
-const { TemiRobot, Visit, AuditLog, Location, Organization, ServiceRequest, User } = require('../models');
+const { col, Op } = require('sequelize');
+const { TemiRobot, Visit, AuditLog, Location, Organization, Room, ServiceRequest, User } = require('../models');
 const { notifyServiceRequest, notifyServiceFollowUp, notifyVisitCompleted, emitAnalyticsUpdate } = require('../services/notificationService');
 const { SOCKET_EVENTS } = require('../config/constants');
 
@@ -87,19 +87,72 @@ const syncLocations = async (req, res, next) => {
   }
 };
 
-// GET /temi/locations/:serial — Get saved navigation locations for this Temi
+// GET /temi/locations/:serial — Get navigation locations for this Temi.
+// Location data lives in three places: this robot's own `saved_locations`
+// (temi_robots), its matching row in `locations` (temi_serial), and the
+// org's `rooms` (Room Management). We first look for anything specific to
+// this serial; only when that comes up empty (new/unsynced robot) do we
+// fall back to every location across all three tables for its organization.
 const getLocations = async (req, res, next) => {
   try {
+    const serial = req.params.serial?.toUpperCase();
     const robot = await TemiRobot.findOne({
-      where: { serial_number: req.params.serial?.toUpperCase() },
-      attributes: ['saved_locations'],
+      where: { serial_number: serial },
+      attributes: ['saved_locations', 'organization_id'],
       raw: true,
     });
 
-    // Return only this robot's real saved locations. Empty array when the robot
-    // doesn't exist or has never synced — callers that need an org-scoped
-    // fallback to Rooms should use GET /admin/locations instead.
-    const savedRooms = robot?.saved_locations?.length ? robot.saved_locations : [];
+    if (!robot) return res.json({ savedRooms: [] });
+
+    const normalizeLoc = (loc) => (typeof loc === 'string' ? loc : loc?.name ?? String(loc));
+
+    // 1. This device's own synced rooms (temi_robots.saved_locations)
+    const ownSavedRooms = Array.isArray(robot.saved_locations)
+      ? robot.saved_locations.map(normalizeLoc)
+      : [];
+
+    // 2. This device's own row in `locations` (matched by temi_serial)
+    const ownLocation = await Location.findOne({
+      where: { temi_serial: serial },
+      attributes: ['name'],
+      raw: true,
+    });
+
+    let savedRooms = [...new Set([...ownSavedRooms, ...(ownLocation?.name ? [ownLocation.name] : [])])];
+
+    if (savedRooms.length === 0 && robot.organization_id) {
+      const orgId = robot.organization_id;
+
+      const orgRobots = await TemiRobot.findAll({
+        where: { organization_id: orgId, link_status: 'linked' },
+        attributes: ['serial_number', 'saved_locations'],
+        raw: true,
+      });
+      const deviceRooms = orgRobots.flatMap((r) =>
+        (Array.isArray(r.saved_locations) ? r.saved_locations : []).map(normalizeLoc)
+      );
+
+      const orgSerials = orgRobots.map((r) => r.serial_number);
+      const orgLocations = orgSerials.length
+        ? await Location.findAll({
+            where: { temi_serial: { [Op.in]: orgSerials } },
+            attributes: ['name'],
+            raw: true,
+          })
+        : [];
+
+      const orgRooms = await Room.findAll({
+        where: { organization_id: orgId, is_active: true },
+        attributes: ['name'],
+        raw: true,
+      });
+
+      savedRooms = [...new Set([
+        ...deviceRooms,
+        ...orgLocations.map((l) => l.name),
+        ...orgRooms.map((r) => r.name),
+      ])];
+    }
 
     res.json({ savedRooms });
   } catch (err) {
