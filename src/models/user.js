@@ -6,6 +6,7 @@ module.exports = (sequelize, DataTypes) =>
     name: { type: DataTypes.STRING(255), allowNull: false },
     role: { type: DataTypes.STRING(50), allowNull: false },
     department: DataTypes.STRING(255),
+    designation: DataTypes.STRING(255),
     phone: DataTypes.STRING(50),
     desk_location: DataTypes.STRING(255),
     location_id: DataTypes.UUID,

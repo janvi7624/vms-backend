@@ -110,7 +110,7 @@ const register = async (req, res, next) => {
 const getAuthProfile = async (req, res, next) => {
   try {
     const user = await User.findByPk(req.user.id, {
-      attributes: ['id', 'name', 'email', 'phone', 'department', 'desk_location', 'role'],
+      attributes: ['id', 'name', 'email', 'phone', 'department', 'designation', 'desk_location', 'role'],
     });
     if (!user) return res.status(404).json({ error: 'User not found' });
     res.json(user);
@@ -122,11 +122,12 @@ const getAuthProfile = async (req, res, next) => {
 // PUT /auth/profile — any authenticated user; email and password are never allowed
 const updateAuthProfile = async (req, res, next) => {
   try {
-    const { name, phone, department, desk_location } = req.body;
+    const { name, phone, department, designation, desk_location } = req.body;
     const allowed = {};
     if (name          !== undefined && name.trim()) allowed.name          = name.trim();
     if (phone         !== undefined)                allowed.phone         = phone?.trim() || null;
     if (department    !== undefined)                allowed.department    = department?.trim() || null;
+    if (designation   !== undefined)                allowed.designation   = designation?.trim() || null;
     if (desk_location !== undefined)                allowed.desk_location = desk_location?.trim() || null;
 
     if (Object.keys(allowed).length === 0) {
