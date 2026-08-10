@@ -1,5 +1,5 @@
 const { Op, col, literal } = require('sequelize');
-const { Visit, Visitor, User, QrCode, AuditLog, TemiRobot } = require('../models');
+const { Visit, Visitor, User, QrCode, OtpSession, AuditLog, TemiRobot } = require('../models');
 const { sendOTPCode, sendVisitDeclined } = require('../services/emailService');
 const { notifyVisitApproved, notifyVisitDeclined, emitToVisit } = require('../services/notificationService');
 const { createOTPSession } = require('../services/otpService');
@@ -43,6 +43,31 @@ const getVisits = async (req, res, next) => {
       nest: false,
       subQuery: false,
     });
+
+    // Attach each visit's currently-active OTP (if any) so the host can read it
+    // out / share it manually when email or SMS delivery to the visitor fails.
+    const visitIds = visits.map((v) => v.id);
+    if (visitIds.length) {
+      const activeOtps = await OtpSession.findAll({
+        where: {
+          visit_id: { [Op.in]: visitIds },
+          used: false,
+          expires_at: { [Op.gt]: new Date() },
+        },
+        order: [['created_at', 'DESC']],
+        attributes: ['visit_id', 'otp_code', 'expires_at'],
+        raw: true,
+      });
+      const otpByVisit = {};
+      for (const s of activeOtps) {
+        if (!otpByVisit[s.visit_id]) otpByVisit[s.visit_id] = s; // first = most recent
+      }
+      for (const v of visits) {
+        const active = otpByVisit[v.id];
+        v.otp_code = active?.otp_code || null;
+        v.otp_expires_at = active?.expires_at || null;
+      }
+    }
 
     res.json({
       visits,
@@ -178,6 +203,12 @@ const approveVisit = async (req, res, next) => {
 
     if (action === 'approve') {
       const isVirtual = meetingType === 'virtual';
+
+      if (!isVirtual && !meetingRoomId && !meetingRoom) {
+        return res.status(400).json({
+          error: 'A meeting room is required to approve an in-person visit. Choose Virtual Meeting if no room is needed.',
+        });
+      }
 
       visit.status      = VISIT_STATUS.APPROVED;
       visit.approved_by = req.user.id;
@@ -346,6 +377,53 @@ const searchEmployeesPublic = async (req, res, next) => {
   }
 };
 
+// POST /employee/visits/:visitId/resend-otp
+// Re-sends the visitor's check-in OTP by email. Reuses the currently active
+// (unused, unexpired) OTP if one exists so the visitor's previously-shared
+// code keeps working; otherwise generates a new one.
+const resendOtp = async (req, res, next) => {
+  try {
+    const { visitId } = req.params;
+
+    const visit = await Visit.findOne({
+      where: { id: visitId, host_employee_id: req.user.id },
+      include: [{ model: Visitor, as: 'visitor', attributes: ['name', 'email'] }],
+    });
+    if (!visit) return res.status(404).json({ error: 'Visit not found' });
+    if (!visit.visitor?.email) return res.status(400).json({ error: 'Visitor has no email on file' });
+
+    let session = await OtpSession.findOne({
+      where: { visit_id: visit.id, used: false, expires_at: { [Op.gt]: new Date() } },
+      order: [['created_at', 'DESC']],
+    });
+
+    let otp;
+    if (session?.otp_code) {
+      otp = session.otp_code;
+    } else {
+      const created = await createOTPSession({
+        visitId: visit.id,
+        email: visit.visitor.email,
+        organizationId: visit.organization_id,
+      });
+      otp = created.otp;
+    }
+
+    await sendOTPCode({
+      visitorEmail: visit.visitor.email,
+      visitorName: visit.visitor.name || 'Visitor',
+      otp,
+      hostName: req.user.name,
+      visitDate: visit.scheduled_at || visit.created_at,
+      expiresMinutes: OTP.EXPIRY_MINUTES,
+    });
+
+    res.json({ message: `OTP re-sent to ${visit.visitor.email}` });
+  } catch (err) {
+    next(err);
+  }
+};
+
 // GET /employee/profile — returns current user's profile including temi_user_id
 const getProfile = async (req, res, next) => {
   try {
@@ -375,4 +453,4 @@ const updateProfile = async (req, res, next) => {
   }
 };
 
-module.exports = { getVisits, getPendingApprovals, approveVisit, getNotifications, markNotificationsRead, searchEmployeesPublic, getProfile, updateProfile };
+module.exports = { getVisits, getPendingApprovals, approveVisit, resendOtp, getNotifications, markNotificationsRead, searchEmployeesPublic, getProfile, updateProfile };

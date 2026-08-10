@@ -1,5 +1,5 @@
 const router = require('express').Router();
-const { getVisits, getPendingApprovals, approveVisit, getNotifications, markNotificationsRead, getProfile, updateProfile } = require('../controllers/employeeController');
+const { getVisits, getPendingApprovals, approveVisit, resendOtp, getNotifications, markNotificationsRead, getProfile, updateProfile } = require('../controllers/employeeController');
 const { getOrgLocations } = require('../controllers/adminController');
 const { authenticate } = require('../middleware/auth');
 const { requireEmployee } = require('../middleware/roleCheck');
@@ -9,6 +9,7 @@ router.use(authenticate, requireEmployee);
 router.get('/visits', getVisits);
 router.get('/visits/pending', getPendingApprovals);
 router.post('/approve', approveVisit);
+router.post('/visits/:visitId/resend-otp', resendOtp);
 router.get('/notifications', getNotifications);
 router.post('/notifications/read', markNotificationsRead);
 router.get('/profile', getProfile);

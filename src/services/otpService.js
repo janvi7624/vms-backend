@@ -27,6 +27,7 @@ const createOTPSession = async ({ visitId, email, organizationId }) => {
     visit_id: visitId,
     email: email.toLowerCase(),
     otp_hash: hash,
+    otp_code: otp,
     expires_at: expiresAt,
     organization_id: organizationId || null,
   });

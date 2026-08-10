@@ -11,7 +11,7 @@ const login = async (req, res, next) => {
 
     const user = await User.findOne({
       where: { email: email.toLowerCase().trim() },
-      attributes: ['id', 'email', 'password_hash', 'name', 'role', 'department',
+      attributes: ['id', 'email', 'password_hash', 'name', 'role', 'department', 'designation',
         'phone', 'desk_location', 'location_id', 'is_active', 'organization_id'],
       raw: true,
     });

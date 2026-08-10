@@ -311,6 +311,12 @@ const approveOrgVisit = async (req, res, next) => {
       return res.status(404).json({ error: 'Visit not found' });
     }
 
+    if (!isVirtual && meetingRoom == null) {
+      return res.status(400).json({
+        error: 'A meeting room is required to approve an in-person visit. Choose Virtual Meeting if no room is needed.',
+      });
+    }
+
     visit.status      = 'approved';
     visit.approved_at = new Date();
     visit.meeting_type = isVirtual ? 'virtual' : 'in_person';
