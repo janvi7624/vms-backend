@@ -36,7 +36,7 @@ const getVisits = async (req, res, next) => {
         { model: Visitor, as: 'visitor', attributes: [], required: true },
         { model: QrCode, as: 'qrCode', attributes: [], required: false },
       ],
-      order: [[literal('COALESCE("Visit"."scheduled_at", "Visit"."created_at")'), 'DESC']],
+      order: [['created_at', 'DESC']],
       limit: parseInt(limit),
       offset: parseInt(offset),
       raw: true,
