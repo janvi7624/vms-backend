@@ -182,7 +182,7 @@ const selectEmployee = async (req, res, next) => {
     }
 
     const visit = await Visit.findByPk(visitId, {
-      include: [{ model: require('../models').Visitor, as: 'visitor', attributes: ['name', 'email'] }],
+      include: [{ model: require('../models').Visitor, as: 'visitor', attributes: ['name', 'email', 'company', 'photo_url'] }],
     });
     if (!visit) return res.status(404).json({ error: 'Visit not found' });
     if (visit.status !== VISIT_STATUS.PENDING_EMPLOYEE_SELECTION) {
@@ -201,33 +201,22 @@ const selectEmployee = async (req, res, next) => {
       status: VISIT_STATUS.PENDING_EMPLOYEE,
     });
 
-    // Notify employee + all admins/sub-admins
-    const admins = await User.findAll({
-      where: {
-        organization_id: visit.organization_id,
-        role: { [Op.in]: ['admin', 'sub_admin'] },
-        is_active: true,
-      },
-      attributes: ['id'],
-    });
-
-    if (_io) {
-      _io.to(`user:${employeeId}`).emit('visit:request', {
-        visitId:     visit.id,
-        visitorName: visit.visitor?.name,
-        purpose,
-        source:      'self_service',
-      });
-      for (const a of admins) {
-        _io.to(`user:${a.id}`).emit('visit:request', {
-          visitId:      visit.id,
-          visitorName:  visit.visitor?.name,
-          employeeName: employee.name,
-          purpose,
-          source:       'self_service',
-        });
-      }
-    }
+    // Notify employee + all admins/sub-admins — DB notification, push (FCM),
+    // and socket, with full visitor context (used to be a bare socket emit
+    // only, so a backgrounded/killed app never got anything).
+    const absolutePhotoUrl = visit.visitor?.photo_url
+      ? `${req.protocol}://${req.get('host')}${visit.visitor.photo_url}`
+      : null;
+    await notifyVisitRequest({
+      employeeId,
+      organizationId: visit.organization_id,
+      employeeName: employee.name,
+      visitId: visit.id,
+      visitorName: visit.visitor?.name,
+      visitorCompany: visit.visitor?.company,
+      purpose,
+      visitorPhoto: absolutePhotoUrl,
+    }).catch((e) => console.error('[Booking] notifyVisitRequest error (non-fatal):', e.message));
 
     res.json({ message: 'Employee selected. Awaiting approval.', visitId: visit.id });
   } catch (err) {
@@ -364,6 +353,7 @@ const createDirectBooking = async (req, res, next) => {
       employeeName:   host.name,
       visitId:        visit.id,
       visitorName:    visitor.name,
+      purpose,
     }).catch((e) => console.error('[DirectBooking] Notification error (non-fatal):', e.message));
 
     if (host.email) {

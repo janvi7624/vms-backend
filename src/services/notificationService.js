@@ -58,7 +58,7 @@ const initializeSocket = (socketIo) => {
 
 // ── DB notification + push helper ─────────────────────────────────────────────
 
-const createNotification = async ({ userId, visitId, type, title, message }) => {
+const createNotification = async ({ userId, visitId, type, title, message, data = {}, imageUrl = null }) => {
   const created = await Notification.create({
     user_id: userId,
     visit_id: visitId,
@@ -73,13 +73,16 @@ const createNotification = async ({ userId, visitId, type, title, message }) => 
     io.to(`user:${userId}`).emit(SOCKET_EVENTS.NOTIFICATION, notification);
   }
 
-  // Firebase push notification (mobile background)
+  // Firebase push notification (mobile background) — includes any extra
+  // context (visitor name/purpose/photo) the caller passed in `data` so the
+  // notification isn't just a bare title/body on the lock screen.
   const user = await User.findByPk(userId, { attributes: ['fcm_token'], raw: true });
   if (user?.fcm_token) {
     await sendPushNotification(user.fcm_token, title, message, {
       type,
       visitId: String(visitId ?? ''),
-    }).catch(() => {});
+      ...data,
+    }, imageUrl).catch(() => {});
   }
 
   return notification;
@@ -136,9 +139,13 @@ const notifyVisitRequest = async ({
   visitId,
   visitorName,
   visitorCompany,
+  purpose,
+  visitorPhoto,
 }) => {
   const visitorDesc = `${visitorName}${visitorCompany ? ` from ${visitorCompany}` : ''}`;
-  const payload = { visitId, visitorName, visitorCompany, organizationId };
+  const purposeTag  = purpose ? ` — ${purpose}` : '';
+  const payload = { visitId, visitorName, visitorCompany, purpose, visitorPhoto, organizationId };
+  const pushData  = { visitorName, visitorCompany: visitorCompany ?? '', purpose: purpose ?? '', visitorPhoto: visitorPhoto ?? '' };
 
   // 1. Notify the host employee
   await createNotification({
@@ -146,7 +153,9 @@ const notifyVisitRequest = async ({
     visitId,
     type: NOTIFICATION_TYPES.VISIT_REQUEST,
     title: 'New Visitor Request',
-    message: `${visitorDesc} is waiting for your approval.`,
+    message: `${visitorDesc} is waiting for your approval.${purposeTag}`,
+    data: pushData,
+    imageUrl: visitorPhoto || null,
   });
 
   // 2. Notify every admin/sub_admin in the org
@@ -160,7 +169,9 @@ const notifyVisitRequest = async ({
           visitId,
           type: NOTIFICATION_TYPES.VISIT_REQUEST,
           title: 'New Visit Request',
-          message: `${visitorDesc} has requested a visit${staffTag}.`,
+          message: `${visitorDesc} has requested a visit${staffTag}.${purposeTag}`,
+          data: pushData,
+          imageUrl: visitorPhoto || null,
         })
       )
     );

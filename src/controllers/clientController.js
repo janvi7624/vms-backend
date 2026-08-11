@@ -170,6 +170,7 @@ const bookVisit = async (req, res, next) => {
         visitId:        visit.id,
         visitorName:    req.user.name,
         visitorCompany: visitorCompany || null,
+        purpose,
       });
     } catch (e) {
       console.error('[notify] bookVisit notification failed (non-fatal):', e.message);

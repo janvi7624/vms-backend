@@ -30,7 +30,7 @@ function getMessaging() {
   }
 }
 
-async function sendPushNotification(fcmToken, title, body, data = {}) {
+async function sendPushNotification(fcmToken, title, body, data = {}, imageUrl = null) {
   if (!fcmToken) return;
   const messaging = getMessaging();
   if (!messaging) return;
@@ -38,13 +38,13 @@ async function sendPushNotification(fcmToken, title, body, data = {}) {
   try {
     await messaging.send({
       token: fcmToken,
-      notification: { title, body },
+      notification: { title, body, ...(imageUrl ? { imageUrl } : {}) },
       data: Object.fromEntries(
         Object.entries(data).map(([k, v]) => [k, String(v ?? '')])
       ),
       android: {
         priority: 'high',
-        notification: { sound: 'default' },
+        notification: { sound: 'default', ...(imageUrl ? { imageUrl } : {}) },
       },
     });
     console.log(`[FCM] ✅ Sent to ...${fcmToken.slice(-8)}: ${title}`);

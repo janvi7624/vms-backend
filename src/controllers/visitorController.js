@@ -133,6 +133,7 @@ const createImpromptu = async (req, res, next) => {
         visitId:        visit.id,
         visitorName,
         visitorCompany,
+        purpose,
       });
     } catch (e) {
       console.error('Notification error (non-fatal):', e.message);

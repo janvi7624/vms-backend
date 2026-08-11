@@ -1,6 +1,6 @@
 const bcrypt = require('bcryptjs');
 const { Op, col, fn, literal } = require('sequelize');
-const { User, Visit, Visitor, AuditLog, TemiRobot, Location, Organization, Room, sequelize } = require('../models');
+const { User, Visit, Visitor, AuditLog, TemiRobot, Location, Organization, Room, OtpSession, sequelize } = require('../models');
 const { canManage } = require('../middleware/roleCheck');
 const { emitAnalyticsUpdate, emitToTemi, emitToOrg } = require('../services/notificationService');
 const { SOCKET_EVENTS } = require('../config/constants');
@@ -408,6 +408,32 @@ const getAllVisits = async (req, res, next) => {
       nest: false,
       subQuery: false,
     });
+
+    // Attach each visit's currently-active OTP (if any) so admins can read it
+    // out / share it manually when email or SMS delivery to the visitor fails —
+    // mirrors employeeController.getVisits.
+    const visitIds = visits.map((v) => v.id);
+    if (visitIds.length) {
+      const activeOtps = await OtpSession.findAll({
+        where: {
+          visit_id: { [Op.in]: visitIds },
+          used: false,
+          expires_at: { [Op.gt]: new Date() },
+        },
+        order: [['created_at', 'DESC']],
+        attributes: ['visit_id', 'otp_code', 'expires_at'],
+        raw: true,
+      });
+      const otpByVisit = {};
+      for (const s of activeOtps) {
+        if (!otpByVisit[s.visit_id]) otpByVisit[s.visit_id] = s; // first = most recent
+      }
+      for (const v of visits) {
+        const active = otpByVisit[v.id];
+        v.otp_code = active?.otp_code || null;
+        v.otp_expires_at = active?.expires_at || null;
+      }
+    }
 
     res.json({ visits, total, page: parseInt(page), limit: parseInt(limit) });
   } catch (err) {

@@ -1,6 +1,7 @@
 const { Visit, Visitor, User, TemiRobot, Room } = require('../models');
 const { createOTPSession, validateOTP } = require('../services/otpService');
 const { sendOTPCode } = require('../services/emailService');
+const { notifyVisitRequest } = require('../services/notificationService');
 const sms = require('../services/smsService');
 const { VISIT_STATUS, SOCKET_EVENTS, OTP } = require('../config/constants');
 
@@ -272,16 +273,21 @@ const requestWalkIn = async (req, res, next) => {
       robot_id:        device?.id || null,
     });
 
-    // Notify employee via socket
-    if (_io) {
-      _io.to(`user:${employeeId}`).emit('visit:request', {
-        visitId:     visit.id,
-        visitorName,
-        visitorCompany,
-        purpose,
-        visitorPhoto: savedPhotoUrl,
-      });
-    }
+    // Notify employee (+ org admins): DB notification, push (FCM), and socket —
+    // this used to be a bare socket emit only, which never reached a
+    // backgrounded/killed app; walk-in requests now get a real push like
+    // every other visit-request path.
+    const absolutePhotoUrl = savedPhotoUrl ? `${req.protocol}://${req.get('host')}${savedPhotoUrl}` : null;
+    await notifyVisitRequest({
+      employeeId,
+      organizationId: employee.organization_id,
+      employeeName: employee.name,
+      visitId: visit.id,
+      visitorName,
+      visitorCompany,
+      purpose,
+      visitorPhoto: absolutePhotoUrl,
+    }).catch((e) => console.error('[WalkIn] notifyVisitRequest error (non-fatal):', e.message));
 
     // Send approval request email to employee
     const { sendApprovalNotification } = require('../services/emailService');

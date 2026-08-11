@@ -385,8 +385,16 @@ const resendOtp = async (req, res, next) => {
   try {
     const { visitId } = req.params;
 
+    // Admins/sub-admins can resend for any visit in their org; employees only their own.
+    const where = { id: visitId };
+    if (['super_admin', 'admin', 'sub_admin'].includes(req.user.role)) {
+      where.organization_id = req.user.organization_id;
+    } else {
+      where.host_employee_id = req.user.id;
+    }
+
     const visit = await Visit.findOne({
-      where: { id: visitId, host_employee_id: req.user.id },
+      where,
       include: [{ model: Visitor, as: 'visitor', attributes: ['name', 'email'] }],
     });
     if (!visit) return res.status(404).json({ error: 'Visit not found' });
