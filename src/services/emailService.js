@@ -1,33 +1,34 @@
-const nodemailer = require('nodemailer');
+const { enqueueEmail } = require('../queues/emailQueue');
+const { isSuppressed } = require('./suppressionService');
 
-let transporter;
-
-const getTransporter = () => {
-  if (!transporter) {
-    transporter = nodemailer.createTransport({
-      host: process.env.EMAIL_HOST,
-      port: parseInt(process.env.EMAIL_PORT) || 587,
-      secure: parseInt(process.env.EMAIL_PORT) === 465,
-      auth: {
-        user: process.env.EMAIL_USER,
-        pass: process.env.EMAIL_PASS,
-      },
-    });
-  }
-  return transporter;
+// Best-effort — used to reflect immediate (pre-queue) failures onto the
+// OtpSession row so dashboards show "failed" right away instead of waiting
+// on a queue cycle that will never happen.
+const markOtpEmailStatus = async (otpSessionId, status) => {
+  if (!otpSessionId) return;
+  const { OtpSession } = require('../models');
+  await OtpSession.update({ email_status: status }, { where: { id: otpSessionId } }).catch(() => {});
 };
 
-const sendEmail = async ({ to, subject, html }) => {
-  if (!process.env.EMAIL_USER) {
-    console.log(`[Email Skipped] To: ${to} | Subject: ${subject}`);
+// Sends go through AWS SES, off the request path: this just enqueues onto
+// pg-boss (backed by Postgres) and returns immediately. The email worker
+// (src/workers/emailWorker.js) does the actual SES send with retries, so a
+// slow/failing send can never block or silently drop an OTP/login request.
+//
+// `meta` (optional) is passed straight through to the queue job — see
+// emailQueue.js. Used today for meta.otpSessionId.
+const sendEmail = async ({ to, subject, html, meta }) => {
+  if (!process.env.SES_FROM) {
+    console.log(`[Email Skipped] SES_FROM not configured | To: ${to} | Subject: ${subject}`);
+    await markOtpEmailStatus(meta?.otpSessionId, 'failed');
     return;
   }
-  await getTransporter().sendMail({
-    from: process.env.EMAIL_FROM || process.env.EMAIL_USER,
-    to,
-    subject,
-    html,
-  });
+  if (await isSuppressed(to)) {
+    console.warn(`[Email Suppressed] To: ${to} | Subject: ${subject} — past bounce/complaint, skipping`);
+    await markOtpEmailStatus(meta?.otpSessionId, 'failed');
+    return;
+  }
+  await enqueueEmail({ to, subject, html, meta });
 };
 
 const sendVisitorInvite = async ({ visitorEmail, visitorName, employeeName, visitDate, secureLink }) => {
@@ -122,10 +123,11 @@ function formatDuration(minutes) {
   return `${hours} hour${hours !== 1 ? 's' : ''}`;
 }
 
-const sendOTPCode = async ({ visitorEmail, visitorName, otp, expiresMinutes = 10, visitDate, hostName }) => {
+const sendOTPCode = async ({ visitorEmail, visitorName, otp, expiresMinutes = 10, visitDate, hostName, otpSessionId }) => {
   await sendEmail({
     to: visitorEmail,
     subject: `Your Visit OTP: ${otp}`,
+    meta: otpSessionId ? { otpSessionId } : undefined,
     html: `
       <div style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto;background:#f9f9f9;padding:20px;border-radius:8px">
         <div style="background:#1a1a2e;padding:20px;border-radius:8px 8px 0 0;text-align:center">

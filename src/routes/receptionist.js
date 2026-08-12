@@ -2,13 +2,14 @@ const router = require('express').Router();
 const { authenticate } = require('../middleware/auth');
 const { requireReceptionist } = require('../middleware/roleCheck');
 const {
-  getServiceRequests, updateServiceRequest, addFollowUp, getDashboard,
+  getServiceRequests, updateServiceRequest, addFollowUp, getDashboard, getVisits,
 } = require('../controllers/receptionistController');
 
 // All routes require authentication + receptionist-or-above
 router.use(authenticate, requireReceptionist);
 
 router.get('/dashboard',               getDashboard);
+router.get('/visits',                  getVisits);
 router.get('/service-requests',        getServiceRequests);
 router.patch('/service-requests/:id',  updateServiceRequest);
 router.patch('/service-requests/:id/followup', addFollowUp);

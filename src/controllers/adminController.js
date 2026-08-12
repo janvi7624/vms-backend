@@ -421,7 +421,7 @@ const getAllVisits = async (req, res, next) => {
           expires_at: { [Op.gt]: new Date() },
         },
         order: [['created_at', 'DESC']],
-        attributes: ['visit_id', 'otp_code', 'expires_at'],
+        attributes: ['visit_id', 'otp_code', 'expires_at', 'email_status'],
         raw: true,
       });
       const otpByVisit = {};
@@ -432,6 +432,7 @@ const getAllVisits = async (req, res, next) => {
         const active = otpByVisit[v.id];
         v.otp_code = active?.otp_code || null;
         v.otp_expires_at = active?.expires_at || null;
+        v.otp_email_status = active?.email_status || null;
       }
     }
 
@@ -737,7 +738,7 @@ const getFloorQueue = async (req, res, next) => {
     const today = new Date(); today.setHours(0, 0, 0, 0);
     const tomorrow = new Date(today); tomorrow.setDate(tomorrow.getDate() + 1);
 
-    const [visits, robots] = await Promise.all([
+    const [visitInstances, robots] = await Promise.all([
       Visit.findAll({
         where: {
           organization_id: orgId,
@@ -761,6 +762,35 @@ const getFloorQueue = async (req, res, next) => {
         attributes: ['id', 'name', 'serial_number', 'status', 'battery_level', 'current_task', 'saved_locations'],
       }),
     ]);
+
+    const visits = visitInstances.map((v) => v.get({ plain: true }));
+
+    // Attach each visit's currently-active OTP (if any) so sub-admins can
+    // read it out / share it manually when email or SMS delivery fails —
+    // mirrors adminController.getAllVisits.
+    const visitIds = visits.map((v) => v.id);
+    if (visitIds.length) {
+      const activeOtps = await OtpSession.findAll({
+        where: {
+          visit_id: { [Op.in]: visitIds },
+          used: false,
+          expires_at: { [Op.gt]: new Date() },
+        },
+        order: [['created_at', 'DESC']],
+        attributes: ['visit_id', 'otp_code', 'expires_at', 'email_status'],
+        raw: true,
+      });
+      const otpByVisit = {};
+      for (const s of activeOtps) {
+        if (!otpByVisit[s.visit_id]) otpByVisit[s.visit_id] = s;
+      }
+      for (const v of visits) {
+        const active = otpByVisit[v.id];
+        v.otp_code = active?.otp_code || null;
+        v.otp_expires_at = active?.expires_at || null;
+        v.otp_email_status = active?.email_status || null;
+      }
+    }
 
     res.json({ visits, robots });
   } catch (err) {

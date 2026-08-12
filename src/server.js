@@ -2,6 +2,8 @@ require('dotenv').config();
 
 const { httpServer } = require('./app');
 const { sequelize } = require('./config/database');
+const { boss } = require('./queues/boss');
+const { startEmailWorker } = require('./workers/emailWorker');
 
 const PORT = process.env.PORT || 5000;
 
@@ -9,6 +11,8 @@ const start = async () => {
   try {
     await sequelize.authenticate();
     console.log('✅ Database connected');
+
+    await startEmailWorker(); // start processing queued outbound email (OTP, invites, etc.)
 
     httpServer.listen(PORT, '0.0.0.0', () => {
       const os = require('os');
@@ -28,6 +32,7 @@ const start = async () => {
 
 process.on('SIGTERM', async () => {
   console.log('SIGTERM received, shutting down...');
+  await boss.stop();
   await sequelize.close();
   process.exit(0);
 });

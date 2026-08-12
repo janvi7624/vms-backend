@@ -15,6 +15,7 @@ const TemiRobot      = require('./temiRobot')(sequelize, DataTypes);
 const OtpSession     = require('./otpSession')(sequelize, DataTypes);
 const ServiceRequest = require('./serviceRequest')(sequelize, DataTypes);
 const Room           = require('./room')(sequelize, DataTypes);
+const EmailSuppression = require('./emailSuppression')(sequelize, DataTypes);
 
 // ── Associations ─────────────────────────────────────────────────────────────
 // Organization
@@ -101,4 +102,5 @@ module.exports = {
   OtpSession,
   ServiceRequest,
   Room,
+  EmailSuppression,
 };

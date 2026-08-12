@@ -5,9 +5,13 @@ const {
   createBookRequest, getBookingStatus, selectEmployee, listOrgEmployees,
   getHostBookingInfo, createDirectBooking,
 } = require('../controllers/bookingController');
+const { handleSesEvent } = require('../controllers/sesEventController');
 
 // ── Stripe webhook — MUST use raw body, registered before express.json ────────
 router.post('/stripe/webhook', express.raw({ type: 'application/json' }), stripeWebhook);
+
+// ── SES bounce/complaint webhook (via SNS) — SNS posts text/plain, not JSON ───
+router.post('/ses/events', express.text({ type: '*/*' }), handleSesEvent);
 
 // ── Organization self-registration ────────────────────────────────────────────
 router.post('/organizations/register',                  registerOrganization);

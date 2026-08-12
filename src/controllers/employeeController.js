@@ -55,7 +55,7 @@ const getVisits = async (req, res, next) => {
           expires_at: { [Op.gt]: new Date() },
         },
         order: [['created_at', 'DESC']],
-        attributes: ['visit_id', 'otp_code', 'expires_at'],
+        attributes: ['visit_id', 'otp_code', 'expires_at', 'email_status'],
         raw: true,
       });
       const otpByVisit = {};
@@ -66,6 +66,7 @@ const getVisits = async (req, res, next) => {
         const active = otpByVisit[v.id];
         v.otp_code = active?.otp_code || null;
         v.otp_expires_at = active?.expires_at || null;
+        v.otp_email_status = active?.email_status || null;
       }
     }
 
@@ -230,7 +231,7 @@ const approveVisit = async (req, res, next) => {
       // Generate OTP and send via email + SMS
       let otpSent = false;
       if (visitorEmail) {
-        const { otp } = await createOTPSession({
+        const { otp, sessionId } = await createOTPSession({
           visitId: visit.id,
           email: visitorEmail,
           organizationId: visit.organization_id || req.user.organization_id,
@@ -241,6 +242,7 @@ const approveVisit = async (req, res, next) => {
           otp,
           hostName: req.user.name,
           expiresMinutes: OTP.EXPIRY_MINUTES,
+          otpSessionId: sessionId,
         }).catch((e) => console.error('OTP email error:', e.message));
         await sms.sendOtpSms({ visitorPhone, visitorName, otp, expiresMinutes: OTP.EXPIRY_MINUTES })
           .catch((e) => console.error('[Approve] SMS error (non-fatal):', e.message));
@@ -385,9 +387,12 @@ const resendOtp = async (req, res, next) => {
   try {
     const { visitId } = req.params;
 
-    // Admins/sub-admins can resend for any visit in their org; employees only their own.
+    // Admins/sub-admins/receptionists can resend for any visit in their org
+    // (receptionists don't host visits, so they'd never match on
+    // host_employee_id — they need the same org-wide access admins get);
+    // employees only their own.
     const where = { id: visitId };
-    if (['super_admin', 'admin', 'sub_admin'].includes(req.user.role)) {
+    if (['super_admin', 'admin', 'sub_admin', 'receptionist'].includes(req.user.role)) {
       where.organization_id = req.user.organization_id;
     } else {
       where.host_employee_id = req.user.id;
@@ -405,9 +410,11 @@ const resendOtp = async (req, res, next) => {
       order: [['created_at', 'DESC']],
     });
 
-    let otp;
+    let otp, otpSessionId;
     if (session?.otp_code) {
       otp = session.otp_code;
+      otpSessionId = session.id;
+      await session.update({ email_status: 'pending' }); // reflect the fresh attempt, not the stale one
     } else {
       const created = await createOTPSession({
         visitId: visit.id,
@@ -415,6 +422,7 @@ const resendOtp = async (req, res, next) => {
         organizationId: visit.organization_id,
       });
       otp = created.otp;
+      otpSessionId = created.sessionId;
     }
 
     await sendOTPCode({
@@ -424,6 +432,7 @@ const resendOtp = async (req, res, next) => {
       hostName: req.user.name,
       visitDate: visit.scheduled_at || visit.created_at,
       expiresMinutes: OTP.EXPIRY_MINUTES,
+      otpSessionId,
     });
 
     res.json({ message: `OTP re-sent to ${visit.visitor.email}` });

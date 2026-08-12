@@ -42,7 +42,7 @@ const sendOTP = async (req, res, next) => {
 
     const targetEmail = email.toLowerCase().trim();
 
-    const { otp, expiresAt } = await createOTPSession({
+    const { otp, sessionId, expiresAt } = await createOTPSession({
       visitId: visit.id,
       email: targetEmail,
       organizationId: visit.organization_id,
@@ -55,6 +55,7 @@ const sendOTP = async (req, res, next) => {
       hostName: visit.host?.name,
       visitDate: visit.scheduled_at || visit.created_at,
       expiresMinutes: OTP.EXPIRY_MINUTES,
+      otpSessionId: sessionId,
     }).catch((e) => console.error('[OTP] Email error (non-fatal):', e.message));
 
     const visitorPhone = visit.visitor?.phone;

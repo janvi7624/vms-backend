@@ -13,6 +13,11 @@ module.exports = (sequelize, DataTypes) =>
     expires_at: { type: DataTypes.DATE, allowNull: false },
     used: { type: DataTypes.BOOLEAN, defaultValue: false },
     organization_id: DataTypes.UUID,
+    // 'pending' | 'sent' | 'failed' — tracks the OTP email specifically (SMS is
+    // separate and unreliable to track the same way), so staff dashboards can
+    // show a fallback message + resend button when the visitor's email never
+    // actually arrived.
+    email_status: { type: DataTypes.STRING(20), defaultValue: 'pending' },
   }, {
     tableName: 'otp_sessions',
     timestamps: true,

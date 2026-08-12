@@ -337,7 +337,7 @@ const approveOrgVisit = async (req, res, next) => {
     const visitorName  = visit.visitor?.name;
     const visitorPhone = visit.visitor?.phone;
     if (visitorEmail) {
-      const { otp } = await createOTPSession({
+      const { otp, sessionId } = await createOTPSession({
         visitId: visit.id,
         email: visitorEmail,
         organizationId: orgId,
@@ -349,6 +349,7 @@ const approveOrgVisit = async (req, res, next) => {
         hostName: visit.host?.name,
         visitDate: visit.scheduled_at || visit.created_at,
         expiresMinutes: OTP.EXPIRY_MINUTES,
+        otpSessionId: sessionId,
       }).catch((e) => console.error('[Approve] OTP email error:', e.message));
       await sms.sendOtpSms({ visitorPhone, visitorName, otp, expiresMinutes: OTP.EXPIRY_MINUTES })
         .catch((e) => console.error('[Approve] SMS error (non-fatal):', e.message));
