@@ -8,6 +8,8 @@ module.exports = (sequelize, DataTypes) =>
     photo_url: DataTypes.STRING(500),
     face_id: DataTypes.STRING(255),
     face_descriptor: DataTypes.TEXT,
+    job_title: DataTypes.STRING(255),
+    business_card_photo_url: DataTypes.STRING(500),
     organization_id: DataTypes.UUID,
   }, {
     tableName: 'visitors',

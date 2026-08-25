@@ -181,6 +181,7 @@ const requestWalkIn = async (req, res, next) => {
   try {
     const {
       visitorName, visitorEmail, visitorPhone, visitorCompany,
+      jobTitle, businessCardPhotoUrl,
       employeeId, purpose = 'Walk-in visit',
       visitorPhoto, // base64 data-URI captured by Temi camera
       serial, temiSerial, // which kiosk/robot the visitor is standing at
@@ -216,6 +217,8 @@ const requestWalkIn = async (req, res, next) => {
       if (visitorName    && visitorName    !== existing.name)    updates.name    = visitorName;
       if (visitorCompany !== undefined && visitorCompany !== existing.company) updates.company = visitorCompany;
       if (visitorPhone   !== undefined && visitorPhone   !== existing.phone)   updates.phone   = visitorPhone;
+      if (jobTitle !== undefined && jobTitle !== existing.job_title) updates.job_title = jobTitle;
+      if (businessCardPhotoUrl) updates.business_card_photo_url = businessCardPhotoUrl;
       if (Object.keys(updates).length) await visitor.update(updates);
     } else {
       visitor = await Visitor.create({
@@ -223,6 +226,8 @@ const requestWalkIn = async (req, res, next) => {
         email: visitorEmail.toLowerCase(),
         phone: visitorPhone,
         company: visitorCompany,
+        job_title: jobTitle,
+        business_card_photo_url: businessCardPhotoUrl,
         organization_id: employee.organization_id,
       });
     }

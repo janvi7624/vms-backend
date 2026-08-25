@@ -9,7 +9,7 @@ const sms = require('../services/smsService');
 
 // Find or create a visitor by email; updates name/company/phone on every submission
 // so changes propagate across all visits (all queries join from the visitors table).
-const upsertVisitor = async ({ visitorName, visitorEmail, visitorPhone, visitorCompany, organizationId }) => {
+const upsertVisitor = async ({ visitorName, visitorEmail, visitorPhone, visitorCompany, jobTitle, businessCardPhotoUrl, organizationId }) => {
   if (visitorEmail) {
     const existing = await Visitor.findOne({ where: { email: visitorEmail.toLowerCase() } });
     if (existing) {
@@ -17,6 +17,8 @@ const upsertVisitor = async ({ visitorName, visitorEmail, visitorPhone, visitorC
       if (visitorName    && visitorName    !== existing.name)    updates.name    = visitorName;
       if (visitorCompany !== undefined && visitorCompany !== existing.company) updates.company = visitorCompany;
       if (visitorPhone   !== undefined && visitorPhone   !== existing.phone)   updates.phone   = visitorPhone;
+      if (jobTitle !== undefined && jobTitle !== existing.job_title) updates.job_title = jobTitle;
+      if (businessCardPhotoUrl) updates.business_card_photo_url = businessCardPhotoUrl;
       if (Object.keys(updates).length) await existing.update(updates);
       return existing.id;
     }
@@ -25,6 +27,8 @@ const upsertVisitor = async ({ visitorName, visitorEmail, visitorPhone, visitorC
       email: visitorEmail.toLowerCase(),
       phone: visitorPhone,
       company: visitorCompany,
+      job_title: jobTitle,
+      business_card_photo_url: businessCardPhotoUrl,
       organization_id: organizationId,
     });
     return created.id;
@@ -33,6 +37,8 @@ const upsertVisitor = async ({ visitorName, visitorEmail, visitorPhone, visitorC
     name: visitorName,
     phone: visitorPhone,
     company: visitorCompany,
+    job_title: jobTitle,
+    business_card_photo_url: businessCardPhotoUrl,
     organization_id: organizationId,
   });
   return created.id;
@@ -43,6 +49,7 @@ const createPrePlanned = async (req, res, next) => {
   try {
     const {
       visitorName, visitorEmail, visitorPhone, visitorCompany,
+      jobTitle, businessCardPhotoUrl,
       purpose, scheduledAt, meetingRoom, notes,
     } = req.body;
 
@@ -50,7 +57,7 @@ const createPrePlanned = async (req, res, next) => {
       return res.status(400).json({ error: 'Name, email, purpose, and scheduled date are required' });
     }
 
-    const visitorId = await upsertVisitor({ visitorName, visitorEmail, visitorPhone, visitorCompany });
+    const visitorId = await upsertVisitor({ visitorName, visitorEmail, visitorPhone, visitorCompany, jobTitle, businessCardPhotoUrl });
 
     // Create visit record with secure token for visitor form link
     const secureToken = generateSecureToken();
@@ -97,7 +104,7 @@ const createPrePlanned = async (req, res, next) => {
 // POST /visitor/impromptu — Security/kiosk creates impromptu visit
 const createImpromptu = async (req, res, next) => {
   try {
-    const { visitorName, visitorEmail, visitorPhone, visitorCompany, purpose, employeeId } = req.body;
+    const { visitorName, visitorEmail, visitorPhone, visitorCompany, jobTitle, businessCardPhotoUrl, purpose, employeeId } = req.body;
 
     if (!visitorName || !purpose || !employeeId) {
       return res.status(400).json({ error: 'Name, purpose, and employee are required' });
@@ -113,7 +120,7 @@ const createImpromptu = async (req, res, next) => {
       return res.status(404).json({ error: 'Employee not found' });
     }
 
-    const visitorId = await upsertVisitor({ visitorName, visitorEmail, visitorPhone, visitorCompany });
+    const visitorId = await upsertVisitor({ visitorName, visitorEmail, visitorPhone, visitorCompany, jobTitle, businessCardPhotoUrl });
 
     const visit = await Visit.create({
       visitor_id: visitorId,

@@ -16,6 +16,8 @@
   },
   "dependencies": {
     "@aws-sdk/client-sesv2": "^3.600.0",
+    "@aws-sdk/client-textract": "^3.1110.0",
+    "@smithy/node-http-handler": "^4.0.0",
     "@tensorflow/tfjs": "^4.22.0",
     "@tensorflow/tfjs-backend-wasm": "^4.22.0",
     "@vladmandic/face-api": "^1.7.15",

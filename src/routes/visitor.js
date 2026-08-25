@@ -2,6 +2,7 @@ const router = require('express').Router();
 const { createPrePlanned, createImpromptu, getVisitorForm, submitVisitorForm, getVisitor, lookupVisitorHistory } = require('../controllers/visitorController');
 const { searchEmployeesPublic } = require('../controllers/employeeController');
 const { searchFace, registerFace } = require('../controllers/visitorFaceController');
+const { scanBusinessCard } = require('../controllers/ocrController');
 const { directNavigate } = require('../controllers/temiController');
 const { authenticate } = require('../middleware/auth');
 const { requireEmployee } = require('../middleware/roleCheck');
@@ -17,6 +18,10 @@ router.post('/history', lookupVisitorHistory); // no auth — lookup by email
 // Face recognition — public (called by Temi kiosk, no login)
 router.post('/face/search',   searchFace);
 router.post('/face/register', registerFace);
+
+// Business card OCR scan — public (called from kiosk/Temi walk-in and the
+// authenticated host-scheduling form alike; extraction only, no auth needed)
+router.post('/business-card/scan', scanBusinessCard);
 
 // Protected routes (employee/admin)
 router.post('/preplanned', authenticate, requireEmployee, createPrePlanned);
