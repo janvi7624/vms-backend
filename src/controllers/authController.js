@@ -1,5 +1,6 @@
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
+const { Op } = require('sequelize');
 const { User, TemiRobot, Room } = require('../models');
 
 const login = async (req, res, next) => {
@@ -180,4 +181,62 @@ const registerDevice = async (req, res, next) => {
   }
 };
 
-module.exports = { login, getMe, changePassword, register, registerDevice, getAuthProfile, updateAuthProfile, getAuthLocations };
+// DELETE /auth/account — self-service permanent account deletion (any authenticated role).
+// Requires the current password as re-authentication, mirroring changePassword above.
+// Hard-deletes the row (same as permanentDeleteEmployee) rather than a soft deactivate,
+// since Apple 5.1.1(v) requires the deletion to actually remove the account, not disable it.
+const deleteMyAccount = async (req, res, next) => {
+  try {
+    const { password } = req.body;
+    if (!password) {
+      return res.status(400).json({ error: 'Current password is required to delete your account' });
+    }
+
+    const user = await User.findByPk(req.user.id);
+    if (!user) return res.status(404).json({ error: 'Account not found' });
+
+    const valid = await bcrypt.compare(password, user.password_hash);
+    if (!valid) {
+      return res.status(401).json({ error: 'Incorrect password' });
+    }
+
+    // Guard: don't let the last active admin/super_admin of an org (or platform) delete
+    // themselves and orphan the organization — mirrors the safety intent of canManage()
+    // used by admin employee deletion. Everyone else (employee/receptionist/client) can
+    // always self-delete since they don't own org-level administration.
+    if (user.role === 'super_admin') {
+      const otherSuperAdmins = await User.count({
+        where: { role: 'super_admin', is_active: true, id: { [Op.ne]: user.id } },
+      });
+      if (otherSuperAdmins === 0) {
+        return res.status(409).json({
+          error: 'You are the only platform super admin. Assign another super admin before deleting this account.',
+        });
+      }
+    } else if (user.role === 'admin' && user.organization_id) {
+      const otherOrgAdmins = await User.count({
+        where: {
+          organization_id: user.organization_id,
+          role: { [Op.in]: ['admin', 'sub_admin'] },
+          is_active: true,
+          id: { [Op.ne]: user.id },
+        },
+      });
+      if (otherOrgAdmins === 0) {
+        return res.status(409).json({
+          error: 'You are the only admin for your organization. Add another admin before deleting this account.',
+        });
+      }
+    }
+
+    await user.destroy();
+    res.json({ message: 'Your account has been permanently deleted' });
+  } catch (err) {
+    next(err);
+  }
+};
+
+module.exports = {
+  login, getMe, changePassword, register, registerDevice, getAuthProfile, updateAuthProfile,
+  getAuthLocations, deleteMyAccount,
+};
