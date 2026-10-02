@@ -1,25 +1,22 @@
 'use strict';
 
-const fs = require('fs');
-const path = require('path');
 const { parseBusinessCard } = require('./businessCardParser');
-
-const CARDS_DIR = path.join(__dirname, '../../uploads/business-cards');
-
-function ensureCardsDir() {
-  if (!fs.existsSync(CARDS_DIR)) fs.mkdirSync(CARDS_DIR, { recursive: true });
-}
+const s3 = require('./s3Service');
 
 function dataUriToBuffer(base64DataUri) {
   const data = base64DataUri.replace(/^data:image\/\w+;base64,/, '');
   return Buffer.from(data, 'base64');
 }
 
-function saveBusinessCardPhoto(base64DataUri, filename) {
-  ensureCardsDir();
+function contentTypeFromDataUri(base64DataUri) {
+  const match = /^data:(image\/\w+);base64,/.exec(base64DataUri);
+  return match ? match[1] : 'image/jpeg';
+}
+
+async function saveBusinessCardPhoto(base64DataUri, filename) {
   const buf = dataUriToBuffer(base64DataUri);
-  fs.writeFileSync(path.join(CARDS_DIR, filename), buf);
-  return `/uploads/business-cards/${filename}`;
+  const key = `business-cards/${filename}`;
+  return s3.uploadBuffer(key, buf, contentTypeFromDataUri(base64DataUri));
 }
 
 const ENABLED =
@@ -85,7 +82,7 @@ async function scanBusinessCard(imageBase64, ownerId) {
   const { fields, confidence } = parseBusinessCard(lines);
 
   const filename = `${ownerId || uuidv4()}-${uuidv4().slice(0, 8)}.jpg`;
-  const cardPhotoUrl = saveBusinessCardPhoto(imageBase64, filename);
+  const cardPhotoUrl = await saveBusinessCardPhoto(imageBase64, filename);
 
   return {
     fields,

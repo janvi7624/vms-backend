@@ -89,7 +89,7 @@ const registerFace = async (req, res, next) => {
     if (!visitor) return res.status(404).json({ error: 'Visitor not found' });
 
     const filename = `${visitorId}-${uuidv4().slice(0, 8)}.jpg`;
-    const photoUrl = face.saveVisitorPhoto(photo, filename);
+    const photoUrl = await face.saveVisitorPhoto(photo, filename);
     await visitor.update({ photo_url: photoUrl });
 
     const buf = face.photoUrlToBuffer(photo);

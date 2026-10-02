@@ -6,10 +6,19 @@ const { generateSecureToken } = require('../utils/helpers');
 const { VISIT_TYPES, VISIT_STATUS, OTP } = require('../config/constants');
 const { createOTPSession } = require('../services/otpService');
 const sms = require('../services/smsService');
+const s3 = require('../services/s3Service');
+const { v4: uuidv4 } = require('uuid');
+const path = require('path');
 
 // Find or create a visitor by email; updates name/company/phone on every submission
 // so changes propagate across all visits (all queries join from the visitors table).
 const upsertVisitor = async ({ visitorName, visitorEmail, visitorPhone, visitorCompany, jobTitle, businessCardPhotoUrl, organizationId }) => {
+  // The client (mobile/web) may round-trip a previously-signed S3 URL back
+  // here (e.g. WalkInScreen scans a business card, holds the scan result's
+  // cardPhotoUrl in state, then submits it minutes later as
+  // businessCardPhotoUrl) — recover the durable key before persisting so the
+  // stored value doesn't expire with that URL's 1-hour signature.
+  businessCardPhotoUrl = s3.keyFromUrlIfOurs(businessCardPhotoUrl);
   if (visitorEmail) {
     const existing = await Visitor.findOne({ where: { email: visitorEmail.toLowerCase() } });
     if (existing) {
@@ -215,7 +224,12 @@ const submitVisitorForm = async (req, res, next) => {
     }
 
     // Update visitor details (only overwrite fields that were provided)
-    const photoUrl = req.file ? `/uploads/${req.file.filename}` : undefined;
+    let photoUrl;
+    if (req.file) {
+      const ext = path.extname(req.file.originalname).toLowerCase();
+      const key = `visitor-photos/${uuidv4()}${ext}`;
+      photoUrl = await s3.uploadBuffer(key, req.file.buffer, req.file.mimetype);
+    }
     const visitor = await Visitor.findByPk(visit.visitor_id);
     if (fullName != null) visitor.name = fullName;
     if (company != null) visitor.company = company;

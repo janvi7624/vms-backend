@@ -121,6 +121,10 @@ if (process.env.NODE_ENV !== 'test') {
   app.use(morgan('dev'));
 }
 
+// Signs any photo_url/business_card_photo_url (etc.) S3 key in every JSON
+// response into a fresh temporary URL — see middleware/signPhotoUrls.js.
+app.use(require('./middleware/signPhotoUrls'));
+
 app.use('/uploads', (req, res, next) => {
   res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin');
   next();

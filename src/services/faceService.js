@@ -2,23 +2,22 @@
 
 const fs   = require('fs');
 const path = require('path');
+const s3   = require('./s3Service');
 
-// ── Photo storage ──────────────────────────────────────────────────────────────
+// ── Photo storage (AWS S3) ───────────────────────────────────────────────────
 
-const PHOTOS_DIR = path.join(__dirname, '../../uploads/visitor-photos');
 const MODELS_DIR = path.join(__dirname, '../../models/face-api');
 
-function ensurePhotosDir() {
-  if (!fs.existsSync(PHOTOS_DIR)) fs.mkdirSync(PHOTOS_DIR, { recursive: true });
+function contentTypeFromDataUri(base64DataUri) {
+  const match = /^data:(image\/\w+);base64,/.exec(base64DataUri);
+  return match ? match[1] : 'image/jpeg';
 }
 
-function saveVisitorPhoto(base64DataUri, filename) {
-  ensurePhotosDir();
+async function saveVisitorPhoto(base64DataUri, filename) {
   const data = base64DataUri.replace(/^data:image\/\w+;base64,/, '');
   const buf  = Buffer.from(data, 'base64');
-  const file = path.join(PHOTOS_DIR, filename);
-  fs.writeFileSync(file, buf);
-  return `/uploads/visitor-photos/${filename}`;
+  const key  = `visitor-photos/${filename}`;
+  return s3.uploadBuffer(key, buf, contentTypeFromDataUri(base64DataUri));
 }
 
 function photoUrlToBuffer(base64DataUri) {

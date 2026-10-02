@@ -4,6 +4,7 @@ const { sendOTPCode } = require('../services/emailService');
 const { notifyVisitRequest } = require('../services/notificationService');
 const sms = require('../services/smsService');
 const { VISIT_STATUS, SOCKET_EVENTS, OTP } = require('../config/constants');
+const s3 = require('../services/s3Service');
 
 let _io;
 const setIo = (io) => { _io = io; };
@@ -191,6 +192,13 @@ const requestWalkIn = async (req, res, next) => {
       return res.status(400).json({ error: 'Name, email, and employee are required' });
     }
 
+    // The client may round-trip a previously-signed S3 URL back here (the
+    // mobile app's business-card scan holds its scan result's cardPhotoUrl
+    // in state, then submits it as businessCardPhotoUrl) — recover the
+    // durable key before persisting so the stored value doesn't expire with
+    // that URL's 1-hour signature.
+    const resolvedBusinessCardPhotoUrl = s3.keyFromUrlIfOurs(businessCardPhotoUrl);
+
     const employee = await User.findOne({
       where: { id: employeeId, role: ['super_admin', 'admin', 'sub_admin', 'employee'], is_active: true },
       attributes: ['id', 'name', 'email', 'location_id', 'organization_id'],
@@ -218,7 +226,7 @@ const requestWalkIn = async (req, res, next) => {
       if (visitorCompany !== undefined && visitorCompany !== existing.company) updates.company = visitorCompany;
       if (visitorPhone   !== undefined && visitorPhone   !== existing.phone)   updates.phone   = visitorPhone;
       if (jobTitle !== undefined && jobTitle !== existing.job_title) updates.job_title = jobTitle;
-      if (businessCardPhotoUrl) updates.business_card_photo_url = businessCardPhotoUrl;
+      if (resolvedBusinessCardPhotoUrl) updates.business_card_photo_url = resolvedBusinessCardPhotoUrl;
       if (Object.keys(updates).length) await visitor.update(updates);
     } else {
       visitor = await Visitor.create({
@@ -227,7 +235,7 @@ const requestWalkIn = async (req, res, next) => {
         phone: visitorPhone,
         company: visitorCompany,
         job_title: jobTitle,
-        business_card_photo_url: businessCardPhotoUrl,
+        business_card_photo_url: resolvedBusinessCardPhotoUrl,
         organization_id: employee.organization_id,
       });
     }
@@ -240,7 +248,7 @@ const requestWalkIn = async (req, res, next) => {
         const { v4: uuidv4 } = require('uuid');
         const faceService = require('../services/faceService');
         const filename = `${visitor.id}-${uuidv4().slice(0, 8)}.jpg`;
-        savedPhotoUrl = faceService.saveVisitorPhoto(visitorPhoto, filename);
+        savedPhotoUrl = await faceService.saveVisitorPhoto(visitorPhoto, filename);
         await visitor.update({ photo_url: savedPhotoUrl });
         console.log(`[WalkIn] Photo saved OK: ${savedPhotoUrl}`);
 
@@ -283,7 +291,14 @@ const requestWalkIn = async (req, res, next) => {
     // this used to be a bare socket emit only, which never reached a
     // backgrounded/killed app; walk-in requests now get a real push like
     // every other visit-request path.
-    const absolutePhotoUrl = savedPhotoUrl ? `${req.protocol}://${req.get('host')}${savedPhotoUrl}` : null;
+    // New photos are stored as S3 keys and need a freshly signed URL; only
+    // legacy local-disk paths (e.g. "/uploads/...") from before the S3
+    // migration need a host prefix instead.
+    const absolutePhotoUrl = savedPhotoUrl
+      ? (s3.isS3Key(savedPhotoUrl)
+          ? await s3.signUrlIfKey(savedPhotoUrl)
+          : (/^https?:\/\//i.test(savedPhotoUrl) ? savedPhotoUrl : `${req.protocol}://${req.get('host')}${savedPhotoUrl}`))
+      : null;
     await notifyVisitRequest({
       employeeId,
       organizationId: employee.organization_id,

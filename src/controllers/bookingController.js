@@ -24,6 +24,7 @@ const { sequelize, Organization, User, Visit, Visitor } = require('../models');
 const { VISIT_STATUS } = require('../config/constants');
 const { sendApprovalNotification } = require('../services/emailService');
 const { notifyVisitRequest } = require('../services/notificationService');
+const s3 = require('../services/s3Service');
 
 // Roles that can be a visit host — used by the personal-link booking flow below.
 const HOST_ROLES = ['employee', 'sub_admin', 'admin'];
@@ -204,8 +205,14 @@ const selectEmployee = async (req, res, next) => {
     // Notify employee + all admins/sub-admins — DB notification, push (FCM),
     // and socket, with full visitor context (used to be a bare socket emit
     // only, so a backgrounded/killed app never got anything).
-    const absolutePhotoUrl = visit.visitor?.photo_url
-      ? `${req.protocol}://${req.get('host')}${visit.visitor.photo_url}`
+    // New photos are stored as S3 keys and need a freshly signed URL; only
+    // legacy local-disk paths (e.g. "/uploads/...") from before the S3
+    // migration need a host prefix instead.
+    const rawPhotoUrl = visit.visitor?.photo_url;
+    const absolutePhotoUrl = rawPhotoUrl
+      ? (s3.isS3Key(rawPhotoUrl)
+          ? await s3.signUrlIfKey(rawPhotoUrl)
+          : (/^https?:\/\//i.test(rawPhotoUrl) ? rawPhotoUrl : `${req.protocol}://${req.get('host')}${rawPhotoUrl}`))
       : null;
     await notifyVisitRequest({
       employeeId,
